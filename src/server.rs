@@ -1,6 +1,7 @@
 use std::{io::{Error, Read, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream}, pin::Pin, task::{Context, Poll}};
 use clap::Parser;
 use hyper::{rt::ReadBufCursor, server::conn::http1};
+use crate::runner::Runner;
 
 const DEFAULT_HOST: &str = "0.0.0.0";
 
@@ -19,13 +20,15 @@ pub struct ServerArgs {
 
 #[derive(Debug)]
 pub struct Server {
-    config: ServerArgs
+    config: ServerArgs,
+    runner: Runner,
 }
 
 impl Server {
-    pub fn init(arg: ServerArgs) -> Self {
+    pub fn init(arg: ServerArgs, runner: Runner) -> Self {
         return Self {
-            config: arg
+            config: arg,
+            runner: runner,
         }
     }
 
@@ -43,7 +46,7 @@ impl Server {
             match listener.accept() {
                 Ok(conn) => {
                     let req = Request { tcp_stream : conn.0, client: conn.1 };
-                    http1::Builder::new().serve_connection(req, service)
+                    http1::Builder::new().serve_connection(req, self.runner);
                 },
                 Err(err) => {
                     return Option::None;
@@ -110,8 +113,4 @@ impl hyper::rt::Write for Request {
         let tcp_stream = &self.tcp_stream;
         return Poll::Ready(tcp_stream.shutdown(std::net::Shutdown::Write));
     }
-}
-
-impl hyper::rt::Unpin for Request {
-
 }
