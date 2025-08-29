@@ -2,15 +2,13 @@ use std::{process::exit, rc::Rc, vec};
 
 use nix::{
     errno::Errno,
-    libc::{SIGCHLD, SIGINT},
     sys::{
         signal::{
             SigSet, SigmaskHow,
             Signal::{self},
             kill, sigprocmask,
         },
-        signalfd::{SfdFlags, SignalFd},
-        wait::{WaitPidFlag, WaitStatus, waitpid},
+        wait::{WaitStatus, waitpid},
     },
     unistd::{ForkResult, Pid, fork},
 };
@@ -115,7 +113,6 @@ impl WorkerManager {
 
         let childs = self.pids.clone();
 
-        let wait_options = Some(WaitPidFlag::WNOHANG);
         for p in childs {
             let wait_result = waitpid(p, None);
 
@@ -148,20 +145,17 @@ impl WorkerManager {
     }
 
     pub fn manage(&mut self) {
-        loop {
-            let (waited, fails) = self.wait_child();
-            fails
-                .iter()
-                .filter(|e| **e != Errno::EINVAL)
-                .for_each(|e| log::error!("wait failed {e}"));
-            if waited > 0 {
-                log::debug!("wait {waited} processes");
-            }
-            for _ in 0..waited {
-                let _ = self.fork_child();
-            }
+        let (waited, fails) = self.wait_child();
+        fails
+            .iter()
+            .filter(|e| **e != Errno::EINVAL)
+            .for_each(|e| log::error!("wait failed {e}"));
+        if waited > 0 {
+            log::debug!("wait {waited} processes");
         }
-        log::trace!(target:"WorkerManager.manage", "manage over!");
+        for _ in 0..waited {
+            let _ = self.fork_child();
+        }
     }
 }
 
@@ -223,9 +217,8 @@ mod test {
         if let Err(err) = res {
             log::error!(target: "test_manager", "set timer failed {err}");
         }
-
-        manager.manage();
-        let _ = manager.stop();
-        log::debug!(target: "test_manager", "stop {pid}");
+        loop {
+            manager.manage();
+        }
     }
 }
