@@ -4,9 +4,8 @@ use nix::{
     errno::Errno,
     sys::{
         signal::{
-            SigSet, SigmaskHow,
             Signal::{self},
-            kill, sigprocmask,
+            kill,
         },
         wait::{WaitStatus, waitpid},
     },
@@ -17,12 +16,11 @@ pub trait Worker {
     fn run(&self);
 }
 
-#[derive(Clone)]
 pub struct WorkerManager {
     count: u32,
     stopped: bool,
     pids: Vec<Pid>,
-    worker: Rc<dyn Worker>,
+    worker: Option<Rc<dyn Worker>>,
 }
 
 impl Drop for WorkerManager {
@@ -32,7 +30,7 @@ impl Drop for WorkerManager {
 }
 
 impl WorkerManager {
-    pub fn new(count: u32, worker: Rc<dyn Worker>) -> Self {
+    pub fn new(count: u32, worker: Option<Rc<dyn Worker>>) -> Self {
         let pids = Vec::new();
 
         let new_struct = Self {
@@ -46,13 +44,19 @@ impl WorkerManager {
     }
 
     fn fork_child(&mut self) -> Result<Pid, Errno> {
+        if self.worker.is_none() {
+            return Err(Errno::EINVAL);
+        }
+
         return match unsafe { fork() } {
             Ok(ForkResult::Parent { child }) => {
                 self.pids.push(child);
                 Ok(child)
             }
             Ok(ForkResult::Child) => {
-                self.worker.run();
+                if let Some(w) = &self.worker {
+                    w.run();
+                }
                 exit(0);
             }
             Err(err) => {
@@ -73,11 +77,6 @@ impl WorkerManager {
                 }
             }
             if remains == 0 {
-                let mut ss = SigSet::empty();
-                ss.add(Signal::SIGINT);
-                ss.add(Signal::SIGCHLD);
-                let mut prev = SigSet::empty();
-                let _ = sigprocmask(SigmaskHow::SIG_BLOCK, Some(&ss), Some(&mut prev));
                 return Ok(());
             }
         }
@@ -157,6 +156,10 @@ impl WorkerManager {
             let _ = self.fork_child();
         }
     }
+
+    pub fn set_worker(&mut self, worker: Option<Rc<dyn Worker>>) {
+        self.worker = worker;
+    }
 }
 
 #[cfg(test)]
@@ -196,7 +199,7 @@ mod test {
             .format_line_number(true)
             .write_style(env_logger::fmt::WriteStyle::Always)
             .init();
-        let mut manager = WorkerManager::new(5, Rc::new(SleepWorker {}));
+        let mut manager = WorkerManager::new(5, Some(Rc::new(SleepWorker {})));
         let pid = getpid();
         log::debug!(target: "test_manager", "start {pid}");
         let _ = manager.start();
