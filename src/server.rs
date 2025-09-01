@@ -17,7 +17,7 @@ const DEFAULT_HOST: &str = "0.0.0.0";
 pub struct ServerArgs {
     #[arg(short, long, default_value_t = 10080)]
     port: u16,
-    #[arg(short, long, default_value_t = 10079)]
+    #[arg(long, default_value_t = 10079)]
     reserve_port: u16,
     #[arg(long, default_value_t = DEFAULT_HOST.to_string())]
     host: String,
@@ -147,7 +147,7 @@ impl Server {
                 tcp_listener: main_connect,
                 tcp_process: Box::new(EchoProcess { prefix: None }),
             })));
-            group.push(&mut self.main_manager);
+            group.push(&self.main_manager);
 
             if let Some(conn) = reserve_connect {
                 self.reserve_manager.set_worker(Some(Rc::new(TcpWorker {
@@ -157,14 +157,13 @@ impl Server {
                         prefix: Some("reserve: ".to_string()),
                     }),
                 })));
-                group.push(&mut self.reserve_manager);
+                group.push(&self.reserve_manager);
             }
 
             let mut manager = WorkerManager::new(group, None);
-            let _ = manager.start();
-            loop {
-                manager.manage();
-            }
+            let mut group_list = manager.start();
+
+            manager.run(&mut group_list);
         }
     }
 }
