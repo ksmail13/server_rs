@@ -160,7 +160,7 @@ impl Server {
                 group.push(&self.reserve_manager);
             }
 
-            let mut manager = WorkerManager::new(group, None);
+            let manager = WorkerManager::new(group, None);
             let mut group_list = manager.start();
 
             manager.run(&mut group_list);

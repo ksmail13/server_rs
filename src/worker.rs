@@ -133,7 +133,7 @@ impl<'a> WorkerManager<'a> {
         };
     }
 
-    pub fn start(&mut self) -> Vec<(&'a WorkerGroup, Vec<Pid>)> {
+    pub fn start(&self) -> Vec<(&'a WorkerGroup, Vec<Pid>)> {
         let mut vec = vec![];
         for g in &self.groups {
             let start_result = self.generator.start_group_workers(&g);
@@ -231,7 +231,7 @@ mod test {
             .write_style(env_logger::fmt::WriteStyle::Always)
             .init();
         let mut group = WorkerGroup::new(5, Some(Rc::new(SleepWorker {})));
-        let mut manager = WorkerManager::new(vec![&mut group], Some(WorkerCleaner {}));
+        let manager = WorkerManager::new(vec![&mut group], Some(WorkerCleaner {}));
         let mut group_vec = manager.start();
         let pid = getpid();
         log::debug!(target: "test_manager", "start {pid}");
