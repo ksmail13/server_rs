@@ -1,6 +1,20 @@
 use std::rc::Rc;
 
-use nix::{Error, errno::Errno, sys::wait::WaitStatus, unistd::Pid};
+use nix::{
+    Error,
+    errno::Errno,
+    sys::{
+        signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction},
+        wait::WaitStatus,
+    },
+    unistd::Pid,
+};
+
+static mut RUNNING: bool = true;
+
+extern "C" fn sigint_handler(_: i32) {
+    unsafe { RUNNING = false };
+}
 
 pub trait Worker {
     fn run(&self);
@@ -8,6 +22,7 @@ pub trait Worker {
 
 pub struct WorkerGroup {
     count: u32,
+    /* It is occur dynamic dispatch, but it will be called one time after fork */
     worker: Option<Rc<dyn Worker>>,
 }
 
@@ -51,7 +66,10 @@ mod helper {
 
     use nix::{
         errno::Errno,
-        sys::wait::{WaitStatus, wait},
+        sys::{
+            signal::{Signal, kill},
+            wait::{WaitStatus, wait},
+        },
         unistd::{ForkResult, Pid, fork},
     };
 
@@ -111,6 +129,10 @@ mod helper {
                 Err(e) => Err(worker::WaitError::WaitFailed(e)),
             };
         }
+
+        pub fn kill(&self, pid: Pid) -> Result<Pid, Errno> {
+            return kill(pid, Signal::SIGINT).map(|_| pid);
+        }
     }
 }
 
@@ -165,7 +187,24 @@ impl<'a> WorkerManager<'a> {
     }
 
     pub fn run(&self, vec: &mut Vec<(&'a WorkerGroup, Vec<Pid>)>) {
-        loop {
+        let sigaction = unsafe {
+            let mut sigset = SigSet::empty();
+            sigset.add(Signal::SIGINT);
+            sigaction(
+                Signal::SIGINT,
+                &SigAction::new(
+                    SigHandler::Handler(sigint_handler),
+                    SaFlags::SA_ONSTACK,
+                    sigset,
+                ),
+            )
+        };
+
+        if let Err(e) = sigaction {
+            log::error!(target: "WorkerManager.run", "sigaction failed: {e}");
+        }
+
+        while unsafe { RUNNING } {
             match self.cleaner.wait() {
                 Ok(pid) => {
                     for (g, pids) in &mut *vec {
@@ -180,13 +219,21 @@ impl<'a> WorkerManager<'a> {
                         }
                     }
                 }
-                Err(WaitError::WaitFailed(e)) => {
-                    if e != Errno::ECHILD {
-                        log::error!(target: "WorkerManager.run", "wait failed {e}");
-                    }
-                }
+                Err(WaitError::WaitFailed(e)) => match e {
+                    Errno::EINTR => log::trace!("process over"),
+                    _ => log::error!(target: "WorkerManager.run", "wait failed {e}"),
+                },
                 Err(e) => {
                     log::error!(target: "WorkerManager.run", "wait error {e}");
+                }
+            }
+        }
+
+        for (_, pids) in vec {
+            for pid in pids {
+                let result = self.cleaner.kill(*pid);
+                if result.is_ok() {
+                    let _ = self.cleaner.wait();
                 }
             }
         }
