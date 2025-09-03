@@ -19,5 +19,5 @@ fn main() {
     println!("Open Server: {:?}", args);
 
     let mut server = Server::new(args);
-    let _ = server.open_server().err();
+    server.open_server();
 }

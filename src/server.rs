@@ -72,40 +72,37 @@ impl Server {
         };
     }
 
-    pub fn open_server(&mut self) -> Result<i32, String> {
-        loop {
-            let config = &self.config;
-            let main_connect =
-                TcpListener::bind(format!("{}:{}", config.host, config.port)).unwrap();
-            let reserve_connect = if self.config.reserve > 0 {
-                Some(TcpListener::bind(format!("{}:{}", config.host, config.reserve_port)).unwrap())
-            } else {
-                None
-            };
+    pub fn open_server(&mut self) {
+        let config = &self.config;
+        let main_connect = TcpListener::bind(format!("{}:{}", config.host, config.port)).unwrap();
+        let reserve_connect = if self.config.reserve > 0 {
+            Some(TcpListener::bind(format!("{}:{}", config.host, config.reserve_port)).unwrap())
+        } else {
+            None
+        };
 
-            let mut group = vec![];
-            self.main_manager.set_worker(Some(Rc::new(TcpWorker {
+        let mut group = vec![];
+        self.main_manager.set_worker(Some(Rc::new(TcpWorker {
+            timeout_ms: config.timeout_ms,
+            tcp_listener: main_connect,
+            tcp_process: Box::new(EchoProcess { prefix: None }),
+        })));
+        group.push(&self.main_manager);
+
+        if let Some(conn) = reserve_connect {
+            self.reserve_manager.set_worker(Some(Rc::new(TcpWorker {
                 timeout_ms: config.timeout_ms,
-                tcp_listener: main_connect,
-                tcp_process: Box::new(EchoProcess { prefix: None }),
+                tcp_listener: conn,
+                tcp_process: Box::new(EchoProcess {
+                    prefix: Some("reserve: ".to_string()),
+                }),
             })));
-            group.push(&self.main_manager);
-
-            if let Some(conn) = reserve_connect {
-                self.reserve_manager.set_worker(Some(Rc::new(TcpWorker {
-                    timeout_ms: config.timeout_ms,
-                    tcp_listener: conn,
-                    tcp_process: Box::new(EchoProcess {
-                        prefix: Some("reserve: ".to_string()),
-                    }),
-                })));
-                group.push(&self.reserve_manager);
-            }
-
-            let manager = WorkerManager::new(group, None);
-            let mut group_list = manager.start();
-
-            manager.run(&mut group_list);
+            group.push(&self.reserve_manager);
         }
+
+        let manager = WorkerManager::new(group, None);
+        let mut group_list = manager.start();
+
+        manager.run(&mut group_list);
     }
 }
