@@ -3,6 +3,7 @@ use server::ServerArgs;
 
 use crate::server::Server;
 
+mod process;
 mod server;
 mod worker;
 
