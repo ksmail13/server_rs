@@ -28,8 +28,6 @@ pub struct ServerArgs {
 
 pub struct Server {
     config: ServerArgs,
-    main_manager: WorkerGroup,
-    reserve_manager: WorkerGroup,
 }
 
 struct TcpWorker {
@@ -62,14 +60,7 @@ impl Worker for TcpWorker {
 
 impl Server {
     pub fn new(config: ServerArgs) -> Self {
-        let main_worker = config.worker;
-        let reserve_worker = config.reserve;
-
-        return Self {
-            config,
-            main_manager: WorkerGroup::new(main_worker, None),
-            reserve_manager: WorkerGroup::new(reserve_worker, None),
-        };
+        return Self { config };
     }
 
     pub fn open_server(&mut self) {
@@ -82,22 +73,29 @@ impl Server {
         };
 
         let mut group = vec![];
-        self.main_manager.set_worker(Some(Rc::new(TcpWorker {
-            timeout_ms: config.timeout_ms,
-            tcp_listener: main_connect,
-            tcp_process: Box::new(EchoProcess { prefix: None }),
-        })));
-        group.push(&self.main_manager);
+
+        let main_manager = WorkerGroup::new(
+            self.config.worker,
+            Rc::new(TcpWorker {
+                timeout_ms: config.timeout_ms,
+                tcp_listener: main_connect,
+                tcp_process: Box::new(EchoProcess { prefix: None }),
+            }),
+        );
+        group.push(main_manager);
 
         if let Some(conn) = reserve_connect {
-            self.reserve_manager.set_worker(Some(Rc::new(TcpWorker {
-                timeout_ms: config.timeout_ms,
-                tcp_listener: conn,
-                tcp_process: Box::new(EchoProcess {
-                    prefix: Some("reserve: ".to_string()),
+            let reserve_manager = WorkerGroup::new(
+                self.config.reserve,
+                Rc::new(TcpWorker {
+                    timeout_ms: config.timeout_ms,
+                    tcp_listener: conn,
+                    tcp_process: Box::new(EchoProcess {
+                        prefix: Some("reserve: ".to_string()),
+                    }),
                 }),
-            })));
-            group.push(&self.reserve_manager);
+            );
+            group.push(reserve_manager);
         }
 
         let manager = WorkerManager::new(group, None);

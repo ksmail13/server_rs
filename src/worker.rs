@@ -23,19 +23,15 @@ pub trait Worker {
 pub struct WorkerGroup {
     count: u32,
     /* It is occur dynamic dispatch, but it will be called one time after fork */
-    worker: Option<Rc<dyn Worker>>,
+    worker: Rc<dyn Worker>,
 }
 
 impl WorkerGroup {
-    pub fn new(count: u32, worker: Option<Rc<dyn Worker>>) -> Self {
+    pub fn new(count: u32, worker: Rc<dyn Worker>) -> Self {
         return Self {
             count: count,
             worker: worker,
         };
-    }
-
-    pub fn set_worker(&mut self, worker: Option<Rc<dyn Worker>>) {
-        self.worker = worker;
     }
 }
 
@@ -97,16 +93,10 @@ mod helper {
         }
 
         pub fn fork_child(&self, group: &WorkerGroup) -> Result<Pid, Errno> {
-            if group.worker.is_none() {
-                return Err(Errno::EINVAL);
-            }
-
             return match unsafe { fork() } {
                 Ok(ForkResult::Parent { child }) => Ok(child),
                 Ok(ForkResult::Child) => {
-                    if let Some(w) = &group.worker {
-                        w.run();
-                    }
+                    group.worker.run();
                     exit(0);
                 }
                 Err(err) => Err(err),
@@ -136,14 +126,14 @@ mod helper {
     }
 }
 
-pub struct WorkerManager<'a> {
-    groups: Vec<&'a WorkerGroup>,
+pub struct WorkerManager {
+    groups: Vec<WorkerGroup>,
     cleaner: WorkerCleaner,
     generator: helper::WorkerGenerator,
 }
 
-impl<'a> WorkerManager<'a> {
-    pub fn new(groups: Vec<&'a WorkerGroup>, cleaner: Option<WorkerCleaner>) -> Self {
+impl WorkerManager {
+    pub fn new(groups: Vec<WorkerGroup>, cleaner: Option<WorkerCleaner>) -> Self {
         return Self {
             groups: groups,
             cleaner: if let Some(c) = cleaner {
@@ -155,7 +145,7 @@ impl<'a> WorkerManager<'a> {
         };
     }
 
-    pub fn start(&self) -> Vec<(&'a WorkerGroup, Vec<Pid>)> {
+    pub fn start(&self) -> Vec<(&WorkerGroup, Vec<Pid>)> {
         let mut vec = vec![];
         for g in &self.groups {
             let start_result = self.generator.start_group_workers(&g);
@@ -163,7 +153,7 @@ impl<'a> WorkerManager<'a> {
                 Err(err) => {
                     log::error!("start failed: {err}");
                 }
-                Ok(pids) => vec.push((*g, pids)),
+                Ok(pids) => vec.push((g, pids)),
             }
         }
 
@@ -186,7 +176,7 @@ impl<'a> WorkerManager<'a> {
         return self.generator.fork_child(group).map(|p: Pid| Some(p));
     }
 
-    pub fn run(&self, vec: &mut Vec<(&'a WorkerGroup, Vec<Pid>)>) {
+    pub fn run(&self, vec: &mut Vec<(&WorkerGroup, Vec<Pid>)>) {
         let sigaction = unsafe {
             let mut sigset = SigSet::empty();
             sigset.add(Signal::SIGINT);
@@ -277,8 +267,8 @@ mod test {
             .format_line_number(true)
             .write_style(env_logger::fmt::WriteStyle::Always)
             .init();
-        let mut group = WorkerGroup::new(5, Some(Rc::new(SleepWorker {})));
-        let manager = WorkerManager::new(vec![&mut group], Some(WorkerCleaner {}));
+        let group = WorkerGroup::new(1, Rc::new(SleepWorker {}));
+        let manager = WorkerManager::new(vec![group], Some(WorkerCleaner {}));
         let mut group_vec = manager.start();
         let pid = getpid();
         log::debug!(target: "test_manager", "start {pid}");
