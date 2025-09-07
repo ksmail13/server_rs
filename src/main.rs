@@ -4,7 +4,7 @@ use args::Args;
 use clap::Parser;
 
 use crate::{
-    process::echo_process::EchoProcess,
+    process::echo::EchoProcess,
     server::Server,
     server::{ServerArgs, WorkerInfo},
 };

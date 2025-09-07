@@ -1,2 +1,2 @@
-pub mod echo_process;
+pub mod echo;
 pub mod process;
