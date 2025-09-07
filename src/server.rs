@@ -1,39 +1,26 @@
 use std::{net::TcpListener, process::exit, rc::Rc, time::Duration};
 
-use clap::Parser;
-
 use crate::{
-    process::{echo_process::EchoProcess, process::Process},
+    process::process::Process,
     worker::{Worker, WorkerGroup, WorkerManager},
 };
 
-const DEFAULT_HOST: &str = "0.0.0.0";
-
-#[derive(Parser, Debug)]
-#[command(version, about, long_about=None)]
-pub struct ServerArgs {
-    #[arg(short, long, default_value_t = 10080)]
-    port: u16,
-    #[arg(long, default_value_t = 10079)]
-    reserve_port: u16,
-    #[arg(long, default_value_t = DEFAULT_HOST.to_string())]
-    host: String,
-    #[arg(short, long, default_value_t = 60)]
-    worker: u32,
-    #[arg(short, long, default_value_t = 4)]
-    reserve: u32,
-    #[arg(short, long, default_value_t = 500)]
-    timeout_ms: u64,
+pub struct WorkerInfo {
+    pub host: String,
+    pub port: u16,
+    pub worker: u32,
+    pub process: Rc<dyn Process>,
 }
 
-pub struct Server {
-    config: ServerArgs,
+pub struct ServerArgs {
+    pub worker_infos: Vec<WorkerInfo>,
+    pub timeout_ms: u64,
 }
 
 struct TcpWorker {
     timeout_ms: u64,
     tcp_listener: TcpListener,
-    tcp_process: Box<dyn Process>,
+    tcp_process: Rc<dyn Process>,
 }
 
 impl Worker for TcpWorker {
@@ -58,6 +45,10 @@ impl Worker for TcpWorker {
     }
 }
 
+pub struct Server {
+    config: ServerArgs,
+}
+
 impl Server {
     pub fn new(config: ServerArgs) -> Self {
         return Self { config };
@@ -65,38 +56,22 @@ impl Server {
 
     pub fn open_server(&mut self) {
         let config = &self.config;
-        let main_connect = TcpListener::bind(format!("{}:{}", config.host, config.port)).unwrap();
-        let reserve_connect = if self.config.reserve > 0 {
-            Some(TcpListener::bind(format!("{}:{}", config.host, config.reserve_port)).unwrap())
-        } else {
-            None
-        };
 
-        let mut group = vec![];
-
-        let main_manager = WorkerGroup::new(
-            self.config.worker,
-            Rc::new(TcpWorker {
-                timeout_ms: config.timeout_ms,
-                tcp_listener: main_connect,
-                tcp_process: Box::new(EchoProcess { prefix: None }),
-            }),
-        );
-        group.push(main_manager);
-
-        if let Some(conn) = reserve_connect {
-            let reserve_manager = WorkerGroup::new(
-                self.config.reserve,
-                Rc::new(TcpWorker {
-                    timeout_ms: config.timeout_ms,
-                    tcp_listener: conn,
-                    tcp_process: Box::new(EchoProcess {
-                        prefix: Some("reserve: ".to_string()),
+        let group: Vec<WorkerGroup> = config
+            .worker_infos
+            .iter()
+            .map(|i| {
+                let listener = TcpListener::bind(format!("{}:{}", i.host, i.port)).unwrap();
+                return WorkerGroup::new(
+                    i.worker,
+                    Rc::new(TcpWorker {
+                        timeout_ms: config.timeout_ms,
+                        tcp_listener: listener,
+                        tcp_process: i.process.clone(),
                     }),
-                }),
-            );
-            group.push(reserve_manager);
-        }
+                );
+            })
+            .collect();
 
         let manager = WorkerManager::new(group, None);
         let mut group_list = manager.start();
