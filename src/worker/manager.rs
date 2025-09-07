@@ -1,129 +1,16 @@
-use std::rc::Rc;
+use nix::Error;
+use nix::errno::Errno;
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
+use nix::unistd::Pid;
 
-use nix::{
-    Error,
-    errno::Errno,
-    sys::{
-        signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction},
-        wait::WaitStatus,
-    },
-    unistd::Pid,
-};
+use crate::worker::group::WorkerGroup;
+use crate::worker::helper;
+use crate::worker::worker::{WaitError, WorkerCleaner};
 
 static mut RUNNING: bool = true;
 
 extern "C" fn sigint_handler(_: i32) {
     unsafe { RUNNING = false };
-}
-
-pub trait Worker {
-    fn run(&self);
-}
-
-pub struct WorkerGroup {
-    count: u32,
-    /* It is occur dynamic dispatch, but it will be called one time after fork */
-    worker: Rc<dyn Worker>,
-}
-
-impl WorkerGroup {
-    pub fn new(count: u32, worker: Rc<dyn Worker>) -> Self {
-        return Self {
-            count: count,
-            worker: worker,
-        };
-    }
-}
-
-pub enum WaitError {
-    ErrorExit(Pid, i32),
-    WaitFailed(Errno),
-    NotExited(WaitStatus),
-}
-
-impl std::fmt::Display for WaitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            WaitError::ErrorExit(pid, exit_code) => {
-                f.write_fmt(format_args!("ErrorExit({pid}, {exit_code})"))
-            }
-            WaitError::WaitFailed(errno) => f.write_fmt(format_args!("WaitFailed({errno})")),
-            WaitError::NotExited(wait_status) => {
-                f.write_fmt(format_args!("NotExited({wait_status:?})"))
-            }
-        };
-    }
-}
-
-pub struct WorkerCleaner;
-
-mod helper {
-    use std::process::exit;
-
-    use nix::{
-        errno::Errno,
-        sys::{
-            signal::{Signal, kill},
-            wait::{WaitStatus, wait},
-        },
-        unistd::{ForkResult, Pid, fork},
-    };
-
-    use crate::worker::{self, WorkerGroup};
-
-    pub struct WorkerGenerator;
-
-    impl WorkerGenerator {
-        pub fn start_group_workers(&self, group: &WorkerGroup) -> Result<Vec<Pid>, &str> {
-            let mut remains = group.count;
-            let threshold = 5;
-            let mut pids = vec![];
-            for _ in 0..threshold {
-                for _ in 0..remains {
-                    if let Ok(pid) = self.fork_child(group) {
-                        pids.push(pid);
-                        remains -= 1;
-                    }
-                }
-                if remains == 0 {
-                    return Ok(pids);
-                }
-            }
-            return Err("Failed run workers");
-        }
-
-        pub fn fork_child(&self, group: &WorkerGroup) -> Result<Pid, Errno> {
-            return match unsafe { fork() } {
-                Ok(ForkResult::Parent { child }) => Ok(child),
-                Ok(ForkResult::Child) => {
-                    group.worker.run();
-                    exit(0);
-                }
-                Err(err) => Err(err),
-            };
-        }
-    }
-
-    impl worker::WorkerCleaner {
-        pub fn wait(&self) -> Result<Pid, worker::WaitError> {
-            let wait_result = wait();
-            return match wait_result {
-                Ok(WaitStatus::Exited(pid, excode)) => {
-                    if excode == 0 {
-                        Ok(pid)
-                    } else {
-                        Err(worker::WaitError::ErrorExit(pid, excode))
-                    }
-                }
-                Ok(ws) => Err(worker::WaitError::NotExited(ws)),
-                Err(e) => Err(worker::WaitError::WaitFailed(e)),
-            };
-        }
-
-        pub fn kill(&self, pid: Pid) -> Result<Pid, Errno> {
-            return kill(pid, Signal::SIGINT).map(|_| pid);
-        }
-    }
 }
 
 pub struct WorkerManager {
@@ -232,7 +119,7 @@ impl WorkerManager {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{rc::Rc, time::Duration};
 
     use nix::{
         sys::{
@@ -242,6 +129,8 @@ mod test {
         time::ClockId,
         unistd::getpid,
     };
+
+    use crate::worker::Worker;
 
     use super::*;
 

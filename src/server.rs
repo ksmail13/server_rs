@@ -1,9 +1,9 @@
 use std::{net::TcpListener, process::exit, rc::Rc, time::Duration};
 
-use crate::{
-    process::process::Process,
-    worker::{Worker, WorkerGroup, WorkerManager},
-};
+use crate::process::process::Process;
+use crate::worker::Worker;
+use crate::worker::group::WorkerGroup;
+use crate::worker::manager::WorkerManager;
 
 pub struct WorkerInfo {
     pub host: String,
