@@ -146,6 +146,16 @@ mod test {
 
             log::info!(target: "SleepWorker.run", "process {getpid} over : {sum}");
         }
+
+        fn init(&self) {
+            let getpid = getpid();
+            log::info!(target: "SleepWorker", "start {getpid}")
+        }
+
+        fn cleanup(&self) {
+            let getpid = getpid();
+            log::info!(target: "SleepWorker", "stop {getpid}")
+        }
     }
 
     #[test]

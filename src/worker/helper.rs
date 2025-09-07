@@ -36,7 +36,9 @@ impl WorkerGenerator {
         return match unsafe { fork() } {
             Ok(ForkResult::Parent { child }) => Ok(child),
             Ok(ForkResult::Child) => {
+                group.worker.init();
                 group.worker.run();
+                group.worker.cleanup();
                 exit(0);
             }
             Err(err) => Err(err),

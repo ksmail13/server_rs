@@ -1,4 +1,8 @@
+use std::collections::HashMap;
+use std::os::fd::AsRawFd;
 use std::{net::TcpListener, process::exit, rc::Rc, time::Duration};
+
+use nix::libc::close;
 
 use crate::process::process::Process;
 use crate::worker::Worker;
@@ -19,17 +23,21 @@ pub struct ServerArgs {
 
 struct TcpWorker {
     timeout_ms: u64,
-    tcp_listener: TcpListener,
+    listeners: Rc<HashMap<String, TcpListener>>,
+    host: String,
     tcp_process: Rc<dyn Process>,
 }
 
 impl Worker for TcpWorker {
     fn run(&self) {
-        let pid = nix::unistd::getpid();
-        let process = &self.tcp_process.name();
-        log::trace!(target: "TcpWorker.run", "TcpWorker start[{pid}:{process}]");
+        let tcp_listener_opt = self.listeners.get(&self.host);
+        if tcp_listener_opt.is_none() {
+            return;
+        }
+
+        let tcp_listener = tcp_listener_opt.unwrap();
         loop {
-            let stream_result = self.tcp_listener.accept();
+            let stream_result = tcp_listener.accept();
 
             match stream_result {
                 Ok((stream, client)) => {
@@ -42,6 +50,26 @@ impl Worker for TcpWorker {
                 }
             }
         }
+    }
+
+    fn init(&self) {
+        let pid = nix::unistd::getpid();
+        let process = &self.tcp_process.name();
+        log::trace!(target: "TcpWorker.init", "TcpWorker start[{pid}:{process}]");
+        // close unnecessary sockets
+        self.listeners
+            .iter()
+            .filter(|(host, _)| **host != self.host)
+            .for_each(|(_, listener)| {
+                let fd = listener.as_raw_fd();
+                unsafe { close(fd) };
+            });
+    }
+
+    fn cleanup(&self) {
+        let pid = nix::unistd::getpid();
+        let process = &self.tcp_process.name();
+        log::trace!(target: "TcpWorker.cleanup", "TcpWorker stop[{pid}:{process}]");
     }
 }
 
@@ -56,17 +84,32 @@ impl Server {
 
     pub fn open_server(&mut self) {
         let config = &self.config;
+        let listeners = Rc::new(
+            config
+                .worker_infos
+                .iter()
+                .map(|i| {
+                    let ip = format!("{}:{}", i.host, i.port);
+                    let listener = TcpListener::bind(ip.clone()).unwrap();
+                    return (ip, listener);
+                })
+                .fold(HashMap::new(), |m, pair| {
+                    let mut new_m = HashMap::from(m);
+                    new_m.insert(pair.0, pair.1);
+                    return new_m;
+                }),
+        );
 
         let group: Vec<WorkerGroup> = config
             .worker_infos
             .iter()
             .map(|i| {
-                let listener = TcpListener::bind(format!("{}:{}", i.host, i.port)).unwrap();
                 return WorkerGroup::new(
                     i.worker,
                     Rc::new(TcpWorker {
                         timeout_ms: config.timeout_ms,
-                        tcp_listener: listener,
+                        listeners: listeners.clone(),
+                        host: format!("{}:{}", i.host, i.port),
                         tcp_process: i.process.clone(),
                     }),
                 );
