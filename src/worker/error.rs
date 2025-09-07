@@ -19,5 +19,3 @@ impl std::fmt::Display for WaitError {
         };
     }
 }
-
-pub struct WorkerCleaner;

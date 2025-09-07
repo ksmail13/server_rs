@@ -9,10 +9,7 @@ use nix::{
     unistd::{ForkResult, Pid, fork},
 };
 
-use crate::worker::{
-    group::WorkerGroup,
-    worker::{WaitError, WorkerCleaner},
-};
+use crate::worker::{error::WaitError, group::WorkerGroup};
 
 pub struct WorkerGenerator;
 
@@ -46,6 +43,7 @@ impl WorkerGenerator {
         };
     }
 }
+pub struct WorkerCleaner;
 
 impl WorkerCleaner {
     pub fn wait(&self) -> Result<Pid, WaitError> {

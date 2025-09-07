@@ -73,7 +73,7 @@ impl Server {
             })
             .collect();
 
-        let manager = WorkerManager::new(group, None);
+        let manager = WorkerManager::new(group);
         let mut group_list = manager.start();
 
         manager.run(&mut group_list);

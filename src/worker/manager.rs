@@ -1,11 +1,15 @@
-use nix::Error;
-use nix::errno::Errno;
-use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
-use nix::unistd::Pid;
+use nix::{
+    Error,
+    errno::Errno,
+    sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction},
+    unistd::Pid,
+};
 
-use crate::worker::group::WorkerGroup;
-use crate::worker::helper;
-use crate::worker::worker::{WaitError, WorkerCleaner};
+use crate::worker::{
+    error::WaitError,
+    group::WorkerGroup,
+    helper::{WorkerCleaner, WorkerGenerator},
+};
 
 static mut RUNNING: bool = true;
 
@@ -16,19 +20,15 @@ extern "C" fn sigint_handler(_: i32) {
 pub struct WorkerManager {
     groups: Vec<WorkerGroup>,
     cleaner: WorkerCleaner,
-    generator: helper::WorkerGenerator,
+    generator: WorkerGenerator,
 }
 
 impl WorkerManager {
-    pub fn new(groups: Vec<WorkerGroup>, cleaner: Option<WorkerCleaner>) -> Self {
+    pub fn new(groups: Vec<WorkerGroup>) -> Self {
         return Self {
             groups: groups,
-            cleaner: if let Some(c) = cleaner {
-                c
-            } else {
-                WorkerCleaner {}
-            },
-            generator: helper::WorkerGenerator,
+            cleaner: WorkerCleaner,
+            generator: WorkerGenerator,
         };
     }
 
@@ -157,7 +157,7 @@ mod test {
             .write_style(env_logger::fmt::WriteStyle::Always)
             .init();
         let group = WorkerGroup::new(1, Rc::new(SleepWorker {}));
-        let manager = WorkerManager::new(vec![group], Some(WorkerCleaner {}));
+        let manager = WorkerManager::new(vec![group]);
         let mut group_vec = manager.start();
         let pid = getpid();
         log::debug!(target: "test_manager", "start {pid}");
