@@ -98,19 +98,31 @@ impl WorkerManager {
                 }
                 Err(WaitError::WaitFailed(e)) => match e {
                     Errno::EINTR => log::trace!("process over"),
+                    Errno::ECHILD => (),
                     _ => log::error!(target: "WorkerManager.run", "wait failed {e}"),
                 },
                 Err(e) => {
                     log::error!(target: "WorkerManager.run", "wait error {e}");
+                    return;
                 }
             }
         }
 
+        log::trace!("loop out");
+
         for (_, pids) in vec {
+            let pid_len = pids.len();
             for pid in pids {
                 let result = self.cleaner.kill(*pid);
-                if result.is_ok() {
-                    let _ = self.cleaner.wait();
+                if result.is_err() {
+                    log::trace!("kill child[{pid}] failed")
+                }
+            }
+
+            for _ in 0..pid_len {
+                match self.cleaner.wait() {
+                    Ok(_) => (),
+                    Err(e) => log::error!("wait failed {e}"),
                 }
             }
         }

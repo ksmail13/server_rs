@@ -3,7 +3,7 @@ use std::{
     net::{SocketAddr, TcpStream},
 };
 
-use crate::process::process::Process;
+use crate::process::Process;
 
 #[derive(Debug)]
 pub struct EchoProcess {
