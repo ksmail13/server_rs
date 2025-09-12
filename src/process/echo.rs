@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     net::{SocketAddr, TcpStream},
 };
 
@@ -13,9 +13,11 @@ pub struct EchoProcess {
 impl Process for EchoProcess {
     fn process(&self, mut stream: TcpStream, client: SocketAddr) -> io::Result<(usize, usize)> {
         let pid = nix::unistd::getpid();
-        let mut bufs: Vec<u8> = vec![0; 1024];
         let mut all_readed = 0;
         let mut all_writed = 0;
+
+        let mut bufs: Vec<u8> = vec![0; 1024];
+
         loop {
             let read_result = stream.read(&mut bufs);
 
@@ -28,11 +30,16 @@ impl Process for EchoProcess {
                     if let Some(prefix) = &self.prefix {
                         let _ = stream.write_fmt(format_args!("{prefix}"));
                     }
-                    stream.write(&bufs)
+                    stream.write(&bufs[..readed])
                 }
                 Err(ref read_err) => {
-                    log::error!(target: "MainWorker.process", "Read error: {read_err}");
-                    stream.write_fmt(format_args!("{read_err}")).map(|_| 0)
+                    let err_kind = read_err.kind();
+                    if err_kind == ErrorKind::WouldBlock {
+                        Ok(0)
+                    } else {
+                        log::error!(target: "MainWorker.process", "Read error: {err_kind}");
+                        stream.write_fmt(format_args!("{read_err}")).map(|_| 0)
+                    }
                 }
             };
 
