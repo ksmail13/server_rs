@@ -65,6 +65,6 @@ impl WorkerCleaner {
 
     pub fn kill(&self, pid: Pid) -> Result<Pid, Errno> {
         log::trace!(target: "WorkerCleaner.kill", "kill {pid}");
-        return kill(pid, Signal::SIGTERM).map(|_| pid);
+        return kill(pid, Signal::SIGINT).map(|_| pid);
     }
 }

@@ -1,11 +1,16 @@
-use std::collections::HashMap;
-use std::os::fd::AsRawFd;
-use std::{net::TcpListener, process::exit, rc::Rc, time::Duration};
+use std::{
+    collections::HashMap, net::TcpListener, os::fd::AsRawFd, process::exit, rc::Rc, time::Duration,
+};
 
-use nix::libc::close;
 use nix::{
-    sys::signal::{
-        SaFlags, SigAction, SigHandler, SigSet, SigmaskHow, Signal, sigaction, sigprocmask,
+    libc::{self, close, siginfo_t},
+    sys::{
+        signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction},
+        socket::{
+            setsockopt,
+            sockopt::{ReceiveTimeout, ReuseAddr, ReusePort},
+        },
+        time::TimeVal,
     },
     unistd::getpid,
 };
@@ -15,10 +20,27 @@ use crate::worker::Worker;
 
 static mut RUNNING: bool = true;
 
-extern "C" fn tcpworker_exit_signal_handler(sig_no: i32) {
+extern "C" fn tcpworker_exit_signal_handler(sig_no: i32, si: *mut siginfo_t, _: *mut libc::c_void) {
     unsafe { RUNNING = false };
+
     let pid = getpid();
-    log::trace!(target:"tcpworker_exit_signal_handler", "{sig_no} received in TcpWorker[{pid}]");
+    let si_code = (unsafe { *si }).si_code;
+    log::trace!(target:"tcpworker_exit_signal_handler", "{sig_no}/{si_code} received in TcpWorker[{pid}]");
+}
+
+fn register_signal() {
+    if let Err(e) = unsafe {
+        sigaction(
+            Signal::SIGINT,
+            &SigAction::new(
+                SigHandler::SigAction(tcpworker_exit_signal_handler),
+                SaFlags::SA_SIGINFO,
+                SigSet::empty(),
+            ),
+        )
+    } {
+        log::error!(target: "WorkerManager.run", "sigaction failed: {e}");
+    }
 }
 
 pub struct TcpWorker {
@@ -63,34 +85,9 @@ impl Worker for TcpWorker {
         let process = &self.tcp_process.name();
         log::trace!(target: "TcpWorker.init", "TcpWorker start[{pid}:{process}]");
         // close unnecessary sockets
-        self.listeners
-            .iter()
-            .filter(|(host, _)| **host != self.host)
-            .for_each(|(_, listener)| {
-                let fd = listener.as_raw_fd();
-                unsafe { close(fd) };
-            });
+        self.init_sockets();
 
-        let sigaction = unsafe {
-            sigaction(
-                Signal::SIGTERM,
-                &SigAction::new(
-                    SigHandler::Handler(tcpworker_exit_signal_handler),
-                    SaFlags::empty(),
-                    SigSet::empty(),
-                ),
-            )
-        };
-
-        if let Err(e) = sigaction {
-            log::error!(target: "WorkerManager.run", "sigaction failed: {e}");
-        }
-
-        let mut sig_set = SigSet::empty();
-        sig_set.add(Signal::SIGINT);
-        if let Err(e) = sigprocmask(SigmaskHow::SIG_SETMASK, Some(&sig_set), None) {
-            log::error!(target: "WorkerManager.run", "sigprocmast failed: {e}");
-        }
+        register_signal();
     }
 
     fn cleanup(&self) {
@@ -99,6 +96,24 @@ impl Worker for TcpWorker {
         log::trace!(target: "TcpWorker.cleanup", "TcpWorker stop[{pid}:{process}]");
         if let Some(listener) = self.listeners.get(&self.host) {
             unsafe { close(listener.as_raw_fd()) };
+        }
+    }
+}
+
+impl TcpWorker {
+    fn init_sockets(&self) {
+        self.listeners
+            .iter()
+            .filter(|(host, _)| **host != self.host)
+            .for_each(|(_, listener)| {
+                let fd = listener.as_raw_fd();
+                unsafe { close(fd) };
+            });
+
+        if let Some(listener) = self.listeners.get(&self.host) {
+            let _ = setsockopt(listener, ReceiveTimeout, &TimeVal::new(1, 0));
+            let _ = setsockopt(listener, ReuseAddr, &true);
+            let _ = setsockopt(listener, ReusePort, &true);
         }
     }
 }
