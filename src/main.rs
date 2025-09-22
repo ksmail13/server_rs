@@ -10,6 +10,7 @@ use crate::{
 };
 
 mod args;
+mod http;
 mod process;
 mod server;
 mod worker;
