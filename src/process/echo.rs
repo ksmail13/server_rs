@@ -1,9 +1,9 @@
 use std::{
-    io::{self, ErrorKind, Read, Write},
+    io::{ErrorKind, Read, Write},
     net::{SocketAddr, TcpStream},
 };
 
-use crate::process::Process;
+use crate::process::{Error, Process};
 
 #[derive(Debug)]
 pub struct EchoProcess {
@@ -11,7 +11,7 @@ pub struct EchoProcess {
 }
 
 impl Process for EchoProcess {
-    fn process(&self, mut stream: TcpStream, client: SocketAddr) -> io::Result<(usize, usize)> {
+    fn process(&self, mut stream: TcpStream, client: SocketAddr) -> Result<(usize, usize), Error> {
         let pid = nix::unistd::getpid();
         let mut all_readed = 0;
         let mut all_writed = 0;

@@ -1,14 +1,18 @@
 use std::{
     fmt::Display,
-    io,
     net::{SocketAddr, TcpStream},
 };
 
 pub mod echo;
 
+pub enum Error {
+    ParseFail(String),
+}
+
 pub trait Process {
     #[allow(dead_code)]
-    fn process(&self, stream: TcpStream, client_addr: SocketAddr) -> io::Result<(usize, usize)>;
+    fn process(&self, stream: TcpStream, client_addr: SocketAddr) -> Result<(usize, usize), Error>;
+
     fn name(&self) -> String {
         return "process".to_string();
     }
