@@ -1,22 +1,34 @@
 use std::{
     collections::HashMap,
-    io::{BufWriter, Result, Write},
+    io::{BufWriter, Write},
     net::TcpStream,
 };
 
+use crate::http::value::{HttpResponseCode, HttpVersion};
+
 pub struct HttpResponse<'a> {
+    version: HttpVersion,
+    code: HttpResponseCode,
     header: HashMap<String, Vec<String>>,
     writer: BufWriter<&'a TcpStream>,
-    buf: Vec<u8>,
+    first: bool,
+}
+
+impl<'a> HttpResponse<'a> {
+    pub fn new(http_version: HttpVersion, writer: BufWriter<&'a TcpStream>) -> Self {
+        return Self {
+            version: http_version,
+            code: HttpResponseCode::Ok,
+            header: HashMap::new(),
+            writer: writer,
+            first: false,
+        };
+    }
 }
 
 impl HttpResponse<'_> {
-    pub fn new<'a>(writer: BufWriter<&'a TcpStream>) -> HttpResponse<'a> {
-        return HttpResponse {
-            header: HashMap::new(),
-            writer: writer,
-            buf: vec![0; 8196],
-        };
+    pub fn set_response_code(&mut self, code: HttpResponseCode) {
+        self.code = code;
     }
 
     pub fn set_header(&mut self, key: String, value: String) {
@@ -27,20 +39,54 @@ impl HttpResponse<'_> {
         }
     }
 
-    pub fn write(&mut self, buf: &mut Vec<u8>) {
-        self.buf.append(buf);
+    pub fn write_header(&mut self) -> std::io::Result<usize> {
+        let status_line = format!(
+            "{} {} {}",
+            self.version,
+            self.code.code(),
+            self.code.reason()
+        );
+
+        let mut written = match writeln!(self.writer, "{}", status_line) {
+            Ok(_) => status_line.len() + 1,
+            Err(e) => return Err(e),
+        };
+
+        for (k, v) in self.header.clone().into_iter() {
+            let header_line = format!("{}: {}", k, v.join(";"));
+            match writeln!(self.writer, "{}", header_line) {
+                Err(err) => return Err(err),
+                Ok(_) => written += header_line.len() + 1,
+            }
+        }
+
+        return Ok(written);
     }
 
-    pub fn flush(&mut self) -> Result<()> {
-        if let Err(err) = self.writer.write_all(self.buf.as_slice()) {
-            return Err(err);
-        }
-        if let Err(err) = self.writer.flush() {
-            return Err(err);
+    pub fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.first {
+            if let Err(err) = self.write_header() {
+                return Err(err);
+            }
         }
 
-        self.buf.clear();
+        return self.writer.write(buf).map(|_| buf.len());
+    }
 
-        return Ok(());
+    pub fn write_vectored(&mut self, buf: &Vec<u8>) -> std::io::Result<usize> {
+        if self.first {
+            if let Err(err) = self.write_header() {
+                return Err(err);
+            }
+        }
+
+        return self.writer.write(buf.as_slice()).map(|_| buf.len());
+    }
+
+    pub fn flush(&mut self) -> std::io::Result<()> {
+        return match self.writer.flush() {
+            Err(err) => return Err(err),
+            _ => Ok(()),
+        };
     }
 }
