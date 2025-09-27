@@ -5,6 +5,7 @@ use std::{
 
 pub mod echo;
 
+#[derive(Debug)]
 pub enum Error {
     ParseFail(String),
 }
