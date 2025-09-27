@@ -7,7 +7,7 @@ pub mod echo;
 
 #[derive(Debug)]
 pub enum Error {
-    ParseFail(String),
+    ParseFail { msg: String },
 }
 
 pub trait Process {
