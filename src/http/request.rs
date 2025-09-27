@@ -35,5 +35,3 @@ impl<'a> HttpRequest<'a> {
         return self.http_version.clone();
     }
 }
-
-impl HttpRequest<'_> {}
