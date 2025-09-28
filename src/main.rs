@@ -4,9 +4,9 @@ use args::Args;
 use clap::Parser;
 
 use crate::{
+    http::http::Http1,
     process::echo::EchoProcess,
-    server::Server,
-    server::{ServerArgs, WorkerInfo},
+    server::{Server, ServerArgs, WorkerInfo},
 };
 
 mod args;
@@ -26,22 +26,12 @@ fn main() {
     let arg = Args::parse();
     println!("Open Server: {:?}", arg);
 
-    let worker_infos = vec![
-        WorkerInfo {
-            host: arg.host.clone(),
-            port: arg.port,
-            worker: arg.worker,
-            process: Rc::new(EchoProcess { prefix: None }),
-        },
-        WorkerInfo {
-            host: arg.host.clone(),
-            port: arg.reserve_port,
-            worker: arg.reserve,
-            process: Rc::new(EchoProcess {
-                prefix: Some("Second: ".to_string()),
-            }),
-        },
-    ];
+    let worker_infos = vec![WorkerInfo {
+        host: arg.host.clone(),
+        port: arg.port,
+        worker: arg.worker,
+        process: Rc::new(Http1::new(8196)),
+    }];
 
     let mut server = Server::new(ServerArgs {
         worker_infos: worker_infos,
