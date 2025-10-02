@@ -21,7 +21,7 @@ impl<'a> HttpResponse<'a> {
             code: HttpResponseCode::Ok,
             header: HashMap::new(),
             writer: writer,
-            first: false,
+            first: true,
         };
     }
 }
@@ -47,13 +47,13 @@ impl HttpResponse<'_> {
             self.code.reason()
         );
 
-        let mut written = match writeln!(self.writer, "{}", status_line) {
+        let mut written = match write!(self.writer, "{}\r\n", status_line) {
             Ok(_) => status_line.len() + 1,
             Err(e) => return Err(e),
         };
 
         for (k, v) in self.header.clone().into_iter() {
-            let header_line = format!("{}: {}", k, v.join(";"));
+            let header_line = format!("{}: {}\r\n", k, v.join(";"));
             match writeln!(self.writer, "{}", header_line) {
                 Err(err) => return Err(err),
                 Ok(_) => written += header_line.len() + 1,
@@ -68,19 +68,19 @@ impl HttpResponse<'_> {
             if let Err(err) = self.write_header() {
                 return Err(err);
             }
+
+            if let Err(e) = write!(self.writer, "\r\n") {
+                return Err(e);
+            }
+
+            self.first = false;
         }
 
         return self.writer.write(buf).map(|_| buf.len());
     }
 
     pub fn write_vectored(&mut self, buf: &Vec<u8>) -> std::io::Result<usize> {
-        if self.first {
-            if let Err(err) = self.write_header() {
-                return Err(err);
-            }
-        }
-
-        return self.writer.write(buf.as_slice()).map(|_| buf.len());
+        return self.write(buf.as_slice());
     }
 
     pub fn flush(&mut self) -> std::io::Result<()> {

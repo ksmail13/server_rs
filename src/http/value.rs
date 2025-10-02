@@ -30,6 +30,7 @@ impl Clone for HttpVersion {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum HttpMethod {
     GET,
     POST,
@@ -62,6 +63,7 @@ impl Display for HttpMethod {
     }
 }
 
+#[allow(dead_code)]
 pub enum HttpResponseCode {
     Ok,
     Created,

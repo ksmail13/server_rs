@@ -84,13 +84,6 @@ mod test {
 
     #[test]
     fn success() {
-        colog::basic_builder()
-            .default_format()
-            .filter_level(log::LevelFilter::Trace)
-            .format_line_number(true)
-            .write_style(env_logger::fmt::WriteStyle::Always)
-            .init();
-
         let process = EchoProcess {
             prefix: Some("test".to_string()),
         };

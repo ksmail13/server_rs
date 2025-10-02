@@ -1,11 +1,13 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use args::Args;
 use clap::Parser;
 
 use crate::{
-    http::http::Http1,
-    process::echo::EchoProcess,
+    http::{handler::Handler, http::Http1, value::HttpResponseCode},
     server::{Server, ServerArgs, WorkerInfo},
 };
 
@@ -14,6 +16,18 @@ mod http;
 mod process;
 mod server;
 mod worker;
+
+struct SimpleHandler;
+
+impl Handler for SimpleHandler {
+    fn handle(&self, _: http::request::HttpRequest, mut res: http::response::HttpResponse) {
+        res.set_response_code(HttpResponseCode::Ok);
+        if let Err(e) = res.write("response\n".as_bytes()) {
+            let _ = res.write(e.to_string().as_bytes());
+        }
+        // let _ = res.flush();
+    }
+}
 
 fn main() {
     colog::basic_builder()
@@ -30,7 +44,7 @@ fn main() {
         host: arg.host.clone(),
         port: arg.port,
         worker: arg.worker,
-        process: Rc::new(Http1::new(8196)),
+        process: Rc::new(Http1::new(8196, SimpleHandler)),
     }];
 
     let mut server = Server::new(ServerArgs {

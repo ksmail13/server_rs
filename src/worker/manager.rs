@@ -155,28 +155,21 @@ mod test {
             for i in 0..10000 {
                 sum += i;
             }
-
-            log::info!(target: "SleepWorker.run", "process {getpid} over : {sum}");
         }
 
-        fn init(&self) {
-            let getpid = getpid();
-            log::info!(target: "SleepWorker", "start {getpid}")
-        }
+        fn init(&self) {}
 
-        fn cleanup(&self) {
-            let getpid = getpid();
-            log::info!(target: "SleepWorker", "stop {getpid}")
-        }
+        fn cleanup(&self) {}
     }
 
     #[test]
     fn test_manager() {
         colog::basic_builder()
-            .default_format()
-            .filter_level(log::LevelFilter::Trace)
+            .format_file(true)
             .format_line_number(true)
-            .write_style(env_logger::fmt::WriteStyle::Always)
+            .format_target(true)
+            .format_timestamp_millis()
+            .filter_level(log::LevelFilter::Trace)
             .init();
         let group = WorkerGroup::new(1, Rc::new(SleepWorker {}));
         let manager = WorkerManager::new(vec![group]);
@@ -193,7 +186,7 @@ mod test {
         )
         .unwrap();
         let res = timer.set(
-            OneShot(Duration::from_millis(5000).into()),
+            OneShot(Duration::from_millis(500).into()),
             TimerSetTimeFlags::empty(),
         );
 

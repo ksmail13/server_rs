@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter},
     net::TcpStream,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
@@ -82,7 +82,6 @@ where
     ) -> Result<HttpRequest<'a>, Error> {
         let mut buf = String::new();
         let read_result = reader.read_line(&mut buf);
-
         if let Err(err) = read_result {
             return Err(Error::ReadFail(err.to_string()));
         }
@@ -91,12 +90,15 @@ where
         let version = HttpVersion::parse(req_line[2]).unwrap_or_default();
         let path_query = req_line[1];
 
+        let (path, param) = parse_url(path_query);
+
         return Ok(HttpRequest::new(
             client_addr,
             req_line[0].to_string(),
             version,
+            path,
             self.init_header(&mut reader),
-            self.init_param(path_query),
+            param,
             reader,
         ));
     }
@@ -116,27 +118,69 @@ where
             let key = header_line[0].trim().to_string();
             let value = header_line[1].trim().to_string();
 
-            Self::put_data_to_hashmap(&mut header_map, key, value);
+            put_data_to_hashmap(&mut header_map, key, value);
         }
 
         return header_map;
     }
+}
 
-    fn init_param(&self, query: &str) -> HashMap<String, Vec<String>> {
-        return query
-            .split("&")
-            .map(|s| s.split("=").collect::<Vec<&str>>())
-            .fold(HashMap::new(), |mut m, p| {
-                Self::put_data_to_hashmap(&mut m, p[0].to_string(), p[1].to_string());
-                return m;
-            });
+fn parse_url(query: &str) -> (String, HashMap<String, Vec<String>>) {
+    let path_param: Vec<&str> = query.split("?").collect();
+
+    if path_param.len() < 2 {
+        return (path_param[0].to_string(), HashMap::new());
     }
 
-    fn put_data_to_hashmap(map: &mut HashMap<String, Vec<String>>, key: String, value: String) {
-        if map.contains_key(&key) {
-            map.get_mut(&key).map(|v| v.push(value));
-        } else {
-            map.insert(key, vec![value]);
-        }
+    return (
+        path_param[0].to_string(),
+        path_param[1]
+            .split("&")
+            .filter(|p| !p.is_empty())
+            .map(|s| s.split("=").collect::<Vec<&str>>())
+            .fold(HashMap::new(), |mut m, p| {
+                put_data_to_hashmap(
+                    &mut m,
+                    p[0].to_string(),
+                    if p.len() >= 2 {
+                        p[1].to_string()
+                    } else {
+                        "true".to_string()
+                    },
+                );
+                return m;
+            }),
+    );
+}
+
+fn put_data_to_hashmap(map: &mut HashMap<String, Vec<String>>, key: String, value: String) {
+    if map.contains_key(&key) {
+        map.get_mut(&key).map(|v| v.push(value));
+    } else {
+        map.insert(key, vec![value]);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::http::http::parse_url;
+
+    #[test]
+    fn test_parse_url() {
+        let (path, param) = parse_url("/test?asdf=asdf&asdf=fdsa");
+
+        assert_eq!(path, "/test");
+        assert_eq!(
+            param.get("asdf"),
+            Some(&vec!["asdf".to_string(), "fdsa".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_no_param() {
+        let (path, param) = parse_url("/test");
+
+        assert_eq!(path, "/test");
+        assert!(param.is_empty());
     }
 }

@@ -6,6 +6,7 @@ pub struct HttpRequest<'a> {
     remote_addr: std::net::SocketAddr,
     method: HttpMethod,
     http_version: HttpVersion,
+    path: String,
     header: HashMap<String, Vec<String>>,
     param: HashMap<String, Vec<String>>,
     reader: BufReader<&'a TcpStream>,
@@ -17,6 +18,7 @@ impl<'a> HttpRequest<'a> {
         remote_addr: std::net::SocketAddr,
         method: String,
         http_version: HttpVersion,
+        path: String,
         header: HashMap<String, Vec<String>>,
         param: HashMap<String, Vec<String>>,
         reader: BufReader<&'a TcpStream>,
@@ -25,6 +27,7 @@ impl<'a> HttpRequest<'a> {
             remote_addr,
             method: HttpMethod::parse(method.as_str()),
             http_version,
+            path,
             header,
             param,
             reader,
@@ -33,5 +36,9 @@ impl<'a> HttpRequest<'a> {
 
     pub fn version(&self) -> HttpVersion {
         return self.http_version.clone();
+    }
+
+    pub fn method(&self) -> HttpMethod {
+        return self.method.clone();
     }
 }
