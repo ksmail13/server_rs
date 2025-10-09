@@ -7,6 +7,7 @@ pub mod echo;
 
 #[derive(Debug)]
 pub enum Error {
+    #[allow(dead_code)]
     ParseFail { msg: String },
 }
 

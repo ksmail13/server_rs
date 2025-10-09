@@ -1,7 +1,4 @@
-use std::{
-    rc::Rc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::rc::Rc;
 
 use args::Args;
 use clap::Parser;

@@ -150,11 +150,8 @@ mod test {
 
     impl Worker for SleepWorker {
         fn run(&self) {
-            let getpid = getpid();
-            let mut sum = 0;
-            for i in 0..10000 {
-                sum += i;
-            }
+            let i: u32 = (0..10000).sum();
+            println!("{}", i);
         }
 
         fn init(&self) {}
