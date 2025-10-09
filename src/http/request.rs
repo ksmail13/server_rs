@@ -7,8 +7,8 @@ pub struct HttpRequest<'a> {
     method: HttpMethod,
     http_version: HttpVersion,
     path: String,
-    header: HashMap<String, Vec<String>>,
-    param: HashMap<String, Vec<String>>,
+    header: HashMap<&'a str, Vec<&'a str>>,
+    param: HashMap<&'a str, Vec<&'a str>>,
     reader: BufReader<&'a TcpStream>,
     // TODO : 필요한건 나중에 추가
 }
@@ -19,8 +19,8 @@ impl<'a> HttpRequest<'a> {
         method: String,
         http_version: HttpVersion,
         path: String,
-        header: HashMap<String, Vec<String>>,
-        param: HashMap<String, Vec<String>>,
+        header: HashMap<&'a str, Vec<&'a str>>,
+        param: HashMap<&'a str, Vec<&'a str>>,
         reader: BufReader<&'a TcpStream>,
     ) -> Self {
         return HttpRequest {

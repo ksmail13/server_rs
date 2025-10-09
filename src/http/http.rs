@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter},
     net::TcpStream,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use crate::{
@@ -32,7 +32,9 @@ where
         let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
         let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
 
-        let request = self.init_request(client_addr, BufReader::new(&stream));
+        let reader = BufReader::new(&stream);
+        let header = self.read_header(reader);
+        let request = self.init_request(client_addr);
         let mut response = HttpResponse::new(
             match request.as_ref().map(|r| r.version()) {
                 Ok(r) => r.clone(),
@@ -72,19 +74,34 @@ where
         };
     }
 
+    fn read_header<'a>(&self, mut reader: BufReader<&'a TcpStream>) -> Result<Vec<String>, Error> {
+        let mut res = vec![];
+        loop {
+            let mut buf = String::new();
+            let result = reader.read_line(&mut buf);
+            if let Err(err) = result {
+                return Err(Error::ReadFail(format!("{}", err)));
+            }
+            if result.unwrap() == 0 {
+                break;
+            }
+
+            res.push(buf);
+        }
+
+        return Ok(res);
+    }
+
     /**
      * Read header part of HTTP request
      */
     fn init_request<'a>(
         &self,
         client_addr: std::net::SocketAddr,
-        mut reader: BufReader<&'a TcpStream>,
-    ) -> Result<HttpRequest<'a>, Error> {
+        header: &Vec<String>,
+    ) -> Result<(String, HttpRequest<'a>), Error> {
         let mut buf = String::new();
-        let read_result = reader.read_line(&mut buf);
-        if let Err(err) = read_result {
-            return Err(Error::ReadFail(err.to_string()));
-        }
+        let read_result = header[0];
 
         let req_line: Vec<&str> = buf.split(" ").collect();
         let version = HttpVersion::parse(req_line[2]).unwrap_or_default();
@@ -92,32 +109,31 @@ where
 
         let (path, param) = parse_url(path_query);
 
-        return Ok(HttpRequest::new(
-            client_addr,
-            req_line[0].to_string(),
-            version,
-            path,
-            self.init_header(&mut reader),
-            param,
-            reader,
+        return Ok((
+            buf,
+            HttpRequest::new(
+                client_addr,
+                req_line[0].to_string(),
+                version,
+                path,
+                self.init_header(&header),
+                param,
+                reader,
+            ),
         ));
     }
 
-    fn init_header(&self, reader: &mut BufReader<&TcpStream>) -> HashMap<String, Vec<String>> {
-        let mut buf = String::new();
-        let mut header_map: HashMap<String, Vec<String>> = HashMap::new();
-        while let Ok(line_size) = reader.read_line(&mut buf) {
-            if line_size <= 0 {
-                break;
-            }
+    fn init_header<'a>(&self, reader: &'a Vec<String>) -> HashMap<&'a str, Vec<&'a str>> {
+        let mut header_map: HashMap<&str, Vec<&str>> = HashMap::new();
+        for i in 1..reader.len() {
+            let buf = &reader[i];
 
             let header_line: Vec<&str> = buf.split(":").collect();
             if header_line.len() <= 2 {
                 continue;
             }
-            let key = header_line[0].trim().to_string();
-            let value = header_line[1].trim().to_string();
-
+            let key = header_line[0].trim();
+            let value = header_line[1].trim();
             put_data_to_hashmap(&mut header_map, key, value);
         }
 
@@ -125,7 +141,7 @@ where
     }
 }
 
-fn parse_url(query: &str) -> (String, HashMap<String, Vec<String>>) {
+fn parse_url(query: &str) -> (String, HashMap<&str, Vec<&str>>) {
     let path_param: Vec<&str> = query.split("?").collect();
 
     if path_param.len() < 2 {
@@ -139,21 +155,13 @@ fn parse_url(query: &str) -> (String, HashMap<String, Vec<String>>) {
             .filter(|p| !p.is_empty())
             .map(|s| s.split("=").collect::<Vec<&str>>())
             .fold(HashMap::new(), |mut m, p| {
-                put_data_to_hashmap(
-                    &mut m,
-                    p[0].to_string(),
-                    if p.len() >= 2 {
-                        p[1].to_string()
-                    } else {
-                        "true".to_string()
-                    },
-                );
+                put_data_to_hashmap(&mut m, p[0], if p.len() >= 2 { p[1] } else { "true" });
                 return m;
             }),
     );
 }
 
-fn put_data_to_hashmap(map: &mut HashMap<String, Vec<String>>, key: String, value: String) {
+fn put_data_to_hashmap<'a>(map: &mut HashMap<&'a str, Vec<&'a str>>, key: &'a str, value: &'a str) {
     if map.contains_key(&key) {
         map.get_mut(&key).map(|v| v.push(value));
     } else {
