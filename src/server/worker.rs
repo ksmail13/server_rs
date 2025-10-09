@@ -65,7 +65,13 @@ impl Worker for TcpWorker {
             match stream_result {
                 Ok((stream, client)) => {
                     let _ = stream.set_write_timeout(Some(Duration::from_millis(self.timeout_ms)));
-                    let _ = self.tcp_process.process(stream, client);
+                    let process_result = self.tcp_process.process(stream, &client);
+                    match process_result {
+                        Ok((r, w)) => {
+                            log::trace!("{} r:{} o:{}", client, r, w)
+                        }
+                        Err(err) => log::warn!("process failed {:?}", err),
+                    }
                 }
                 Err(err) => {
                     match err.kind() {
