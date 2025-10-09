@@ -6,12 +6,13 @@ use std::{
 use crate::process::{Error, Process};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct EchoProcess {
     pub prefix: Option<String>,
 }
 
 impl Process for EchoProcess {
-    fn process(&self, mut stream: TcpStream, client: SocketAddr) -> Result<(usize, usize), Error> {
+    fn process(&self, mut stream: TcpStream, client: &SocketAddr) -> Result<(usize, usize), Error> {
         let pid = nix::unistd::getpid();
         let mut all_readed = 0;
         let mut all_writed = 0;
@@ -93,7 +94,7 @@ mod test {
 
         let t = thread::spawn(move || {
             let (stream, remote_addr) = listener.accept().unwrap();
-            return process.process(stream, remote_addr);
+            return process.process(stream, &remote_addr);
         });
 
         let mut client = TcpStream::connect(local_addr).unwrap();

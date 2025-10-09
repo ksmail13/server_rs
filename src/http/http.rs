@@ -27,14 +27,23 @@ where
     fn process(
         &self,
         stream: TcpStream,
-        client_addr: std::net::SocketAddr,
+        client_addr: &std::net::SocketAddr,
     ) -> Result<(usize, usize), process::Error> {
         let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
         let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
 
-        let reader = BufReader::new(&stream);
-        let header = self.read_header(reader);
-        let request = self.init_request(client_addr);
+        log::trace!("Read timeout: {:?}", stream.read_timeout());
+        log::trace!("Write timeout: {:?}", stream.write_timeout());
+
+        let mut reader = BufReader::new(&stream);
+        let header: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
+        if let Err(err) = header {
+            return Err(process::Error::ParseFail {
+                msg: format!("Read header failed: ({})", err),
+            });
+        }
+        let binding = header.unwrap();
+        let request = self.init_request(client_addr, &binding.1, reader);
         let mut response = HttpResponse::new(
             match request.as_ref().map(|r| r.version()) {
                 Ok(r) => r.clone(),
@@ -55,7 +64,7 @@ where
             Ok(req) => self.handler.handle(req, response),
         }
 
-        return Ok((0, 0));
+        return Ok((binding.0, 0));
     }
 
     fn name(&self) -> String {
@@ -74,22 +83,33 @@ where
         };
     }
 
-    fn read_header<'a>(&self, mut reader: BufReader<&'a TcpStream>) -> Result<Vec<String>, Error> {
+    fn read_header<'a>(
+        &self,
+        reader: &mut BufReader<&'a TcpStream>,
+    ) -> Result<(usize, Vec<String>), Error> {
         let mut res = vec![];
+        let mut readed = 0;
         loop {
             let mut buf = String::new();
             let result = reader.read_line(&mut buf);
             if let Err(err) = result {
                 return Err(Error::ReadFail(format!("{}", err)));
             }
-            if result.unwrap() == 0 {
+            readed += result.unwrap();
+            buf.remove(buf.len() - 1); // delete \n
+            buf.remove(buf.len() - 1); // delete \r
+
+            log::trace!("<< {}", buf);
+
+            // head end
+            if buf.is_empty() {
                 break;
             }
 
             res.push(buf);
         }
 
-        return Ok(res);
+        return Ok((readed, res));
     }
 
     /**
@@ -97,11 +117,11 @@ where
      */
     fn init_request<'a>(
         &self,
-        client_addr: std::net::SocketAddr,
-        header: &Vec<String>,
-    ) -> Result<(String, HttpRequest<'a>), Error> {
-        let mut buf = String::new();
-        let read_result = header[0];
+        client_addr: &'a std::net::SocketAddr,
+        header: &'a Vec<String>,
+        reader: BufReader<&'a TcpStream>,
+    ) -> Result<HttpRequest<'a>, Error> {
+        let buf = &header[0];
 
         let req_line: Vec<&str> = buf.split(" ").collect();
         let version = HttpVersion::parse(req_line[2]).unwrap_or_default();
@@ -109,24 +129,21 @@ where
 
         let (path, param) = parse_url(path_query);
 
-        return Ok((
-            buf,
-            HttpRequest::new(
-                client_addr,
-                req_line[0].to_string(),
-                version,
-                path,
-                self.init_header(&header),
-                param,
-                reader,
-            ),
+        return Ok(HttpRequest::new(
+            client_addr,
+            req_line[0].to_string(),
+            version,
+            path,
+            self.init_header(&header),
+            param,
+            reader,
         ));
     }
 
     fn init_header<'a>(&self, reader: &'a Vec<String>) -> HashMap<&'a str, Vec<&'a str>> {
         let mut header_map: HashMap<&str, Vec<&str>> = HashMap::new();
         for i in 1..reader.len() {
-            let buf = &reader[i];
+            let buf = reader[i].trim();
 
             let header_line: Vec<&str> = buf.split(":").collect();
             if header_line.len() <= 2 {
@@ -178,10 +195,7 @@ mod test {
         let (path, param) = parse_url("/test?asdf=asdf&asdf=fdsa");
 
         assert_eq!(path, "/test");
-        assert_eq!(
-            param.get("asdf"),
-            Some(&vec!["asdf".to_string(), "fdsa".to_string()])
-        );
+        assert_eq!(param.get("asdf"), Some(&vec!["asdf", "fdsa"]));
     }
 
     #[test]
