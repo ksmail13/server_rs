@@ -79,6 +79,7 @@ impl HttpResponse<'_> {
         return self.writer.write(buf).map(|_| buf.len());
     }
 
+    #[allow(dead_code)]
     pub fn write_vectored(&mut self, buf: &Vec<u8>) -> std::io::Result<usize> {
         return self.write(buf.as_slice());
     }
