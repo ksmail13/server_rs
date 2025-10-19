@@ -76,7 +76,7 @@ impl HttpResponse<'_> {
             self.first = false;
         }
 
-        return self.writer.write(buf).map(|_| buf.len());
+        return self.writer.write(buf);
     }
 
     #[allow(dead_code)]
@@ -85,9 +85,6 @@ impl HttpResponse<'_> {
     }
 
     pub fn flush(&mut self) -> std::io::Result<()> {
-        return match self.writer.flush() {
-            Err(err) => return Err(err),
-            _ => Ok(()),
-        };
+        return self.writer.flush();
     }
 }
