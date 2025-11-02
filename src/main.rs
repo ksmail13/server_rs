@@ -1,10 +1,10 @@
-use std::rc::Rc;
-
 use args::Args;
 use clap::Parser;
+use std::io::Write;
+use std::rc::Rc;
 
 use crate::{
-    http::{handler::Handler, http::Http1, value::HttpResponseCode},
+    http::{handler::Handler, http::Http1, response::HeaderSetter, value::HttpResponseCode},
     server::{Server, ServerArgs, WorkerInfo},
 };
 
@@ -17,25 +17,33 @@ mod worker;
 struct SimpleHandler;
 
 impl Handler for SimpleHandler {
-    fn handle(&self, _: http::request::HttpRequest, mut res: http::response::HttpResponse) {
+    fn handle(&self, req: &mut http::request::HttpRequest, res: &mut http::response::HttpResponse) {
         res.set_response_code(HttpResponseCode::Ok);
-        if let Err(e) = res.write("response\n".as_bytes()) {
-            let _ = res.write(e.to_string().as_bytes());
+
+        if let Err(e) = writeln!(res, "response") {
+            log::error!("error {}", e);
         }
-        // let _ = res.flush();
+
+        for (k, v) in req.header().iter() {
+            if let Err(e) = writeln!(res, "{}: {}", k, v.join(";")) {
+                log::error!("error {}", e);
+            }
+        }
+
+        res.set_header("content-type", "text/plain".to_string());
     }
 }
 
 fn main() {
     colog::basic_builder()
         .default_format()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(log::LevelFilter::Info)
         .format_line_number(true)
         .write_style(env_logger::fmt::WriteStyle::Always)
         .init();
 
     let arg = Args::parse();
-    println!("Open Server: {:?}", arg);
+    log::info!("server_rs: {:?}", arg);
 
     let worker_infos = vec![WorkerInfo {
         host: arg.host.clone(),

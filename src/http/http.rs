@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, BufWriter},
+    io::{BufRead, BufReader, BufWriter, Write},
     net::TcpStream,
     time::Duration,
 };
@@ -9,8 +9,8 @@ use crate::{
     http::{
         handler::Handler,
         request::HttpRequest,
-        response::HttpResponse,
-        value::{Error, HttpVersion},
+        response::{HeaderSetter, HttpResponse},
+        value::{Error, HttpMethod, HttpResponseCode, HttpVersion},
     },
     process::{self, Process},
 };
@@ -36,35 +36,46 @@ where
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
         let mut reader = BufReader::new(&stream);
-        let header: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
-        if let Err(err) = header {
-            return Err(process::Error::ParseFail {
+        let header_res: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
+        if let Err(err) = header_res {
+            return Err(process::Error::IoFail {
                 msg: format!("Read header failed: ({})", err),
             });
         }
-        let binding = header.unwrap();
-        let request = self.init_request(client_addr, &binding.1, reader);
+        let (header_readed, headers) = header_res.unwrap();
+        let res_request: Result<HttpRequest<'_>, Error> =
+            self.init_request(client_addr, &headers, reader);
+        if let Err(err) = res_request {
+            let mut response = HttpResponse::new(
+                HttpVersion::default(),
+                BufWriter::with_capacity(self.write_buffer_size, &stream),
+            );
+
+            response.set_response_code(HttpResponseCode::BadRequest);
+            response.set_header("Content-Type", "text/plain".to_string());
+            let _ = response.write("Invalid request".as_bytes());
+            let _ = response.flush();
+
+            return Err(process::Error::ParseFail {
+                msg: err.to_string(),
+            });
+        }
+
+        let mut request = res_request.unwrap();
         let mut response = HttpResponse::new(
-            match request.as_ref().map(|r| r.version()) {
-                Ok(r) => r.clone(),
-                _ => HttpVersion::Http10,
-            },
+            request.version(),
             BufWriter::with_capacity(self.write_buffer_size, &stream),
         );
 
-        match request {
-            Err(read_error) => {
-                response.set_header("Content-Type".to_string(), "text/plain".to_string());
-                let _ = response.write("Invalid request".as_bytes());
-                let _ = response.flush();
-                return Err(process::Error::ParseFail {
-                    msg: format!("{:?}", read_error),
-                });
-            }
-            Ok(req) => self.handler.handle(req, response),
+        self.handler.handle(&mut request, &mut response);
+
+        if let Err(err) = response.flush() {
+            return Err(process::Error::IoFail {
+                msg: err.to_string(),
+            });
         }
 
-        return Ok((binding.0, 0));
+        return Ok((header_readed, 0));
     }
 
     fn name(&self) -> String {
@@ -96,15 +107,29 @@ where
                 return Err(Error::ReadFail(format!("{}", err)));
             }
             readed += result.unwrap();
-            buf.remove(buf.len() - 1); // delete \n
-            buf.remove(buf.len() - 1); // delete \r
 
-            log::trace!("<< {}", buf);
+            while buf
+                .chars()
+                .nth(0)
+                .map(|v| v.is_whitespace())
+                .unwrap_or(false)
+            {
+                buf.remove(0);
+            }
 
             // head end
             if buf.is_empty() {
                 break;
             }
+
+            if !buf.ends_with("\r\n") {
+                return Err(Error::ParseFail(format!("Invalid heaader {}", buf)));
+            }
+
+            buf.remove(buf.len() - 1); // delete \n
+            buf.remove(buf.len() - 1); // delete \r
+
+            log::trace!("<< {}", buf);
 
             res.push(buf);
         }
@@ -123,15 +148,25 @@ where
     ) -> Result<HttpRequest<'a>, Error> {
         let buf = &header[0];
 
-        let req_line: Vec<&str> = buf.split(" ").collect();
-        let version = HttpVersion::parse(req_line[2]).unwrap_or_default();
-        let path_query = req_line[1];
+        let mut req_line = buf.split(" ");
+
+        let method = req_line
+            .next()
+            .ok_or_else(|| Error::ParseFail(format!("invalid request line: {}", buf)))?;
+        let path_query = req_line
+            .next()
+            .ok_or_else(|| Error::ParseFail(format!("invalid request line: {}", buf)))?;
+        let ver_str = req_line
+            .next()
+            .ok_or_else(|| Error::ParseFail(format!("invalid request line: {}", buf)))?;
+
+        let version = HttpVersion::parse(ver_str).unwrap_or_default();
 
         let (path, param) = parse_url(path_query);
 
         return Ok(HttpRequest::new(
             client_addr,
-            req_line[0].to_string(),
+            HttpMethod::parse(method),
             version,
             path,
             self.init_header(&header),
@@ -143,15 +178,16 @@ where
     fn init_header<'a>(&self, reader: &'a Vec<String>) -> HashMap<&'a str, Vec<&'a str>> {
         let mut header_map: HashMap<&str, Vec<&str>> = HashMap::new();
         for i in 1..reader.len() {
-            let buf = reader[i].trim();
+            let buf = &reader[i];
 
-            let header_line: Vec<&str> = buf.split(":").collect();
-            if header_line.len() <= 2 {
-                continue;
-            }
-            let key = header_line[0].trim();
-            let value = header_line[1].trim();
-            put_data_to_hashmap(&mut header_map, key, value);
+            let div_idx = match buf.find(':') {
+                Some(idx) => idx,
+                None => continue,
+            };
+
+            let (key, value) = buf.split_at(div_idx);
+
+            put_data_to_hashmap(&mut header_map, key.trim(), value[1..].trim());
         }
 
         return header_map;
@@ -170,20 +206,19 @@ fn parse_url(query: &str) -> (String, HashMap<&str, Vec<&str>>) {
         path_param[1]
             .split("&")
             .filter(|p| !p.is_empty())
-            .map(|s| s.split("=").collect::<Vec<&str>>())
+            .map(|s| match s.find('=') {
+                Some(idx) => s.split_at(idx),
+                None => (s, "=true"),
+            })
             .fold(HashMap::new(), |mut m, p| {
-                put_data_to_hashmap(&mut m, p[0], if p.len() >= 2 { p[1] } else { "true" });
+                put_data_to_hashmap(&mut m, p.0, &p.1[1..]);
                 return m;
             }),
     );
 }
 
 fn put_data_to_hashmap<'a>(map: &mut HashMap<&'a str, Vec<&'a str>>, key: &'a str, value: &'a str) {
-    if map.contains_key(&key) {
-        map.get_mut(&key).map(|v| v.push(value));
-    } else {
-        map.insert(key, vec![value]);
-    }
+    map.entry(key).or_default().push(value);
 }
 
 #[cfg(test)]
