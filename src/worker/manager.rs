@@ -101,6 +101,20 @@ impl WorkerManager {
                     Errno::ECHILD => (),
                     _ => log::error!(target: "WorkerManager.run", "wait failed {e}"),
                 },
+                Err(WaitError::ErrorExit(pid, err)) => {
+                    log::error!(target: "WorkerManager.run", "Child[{}] killed by error[{}]", pid, err);
+                    for (g, pids) in &mut *vec {
+                        match self.collect_and_fork(g, pids, pid) {
+                            Ok(Some(pid)) => pids.push(pid),
+                            Ok(None) => {
+                                log::trace!(target:"WorkerManager.run", "pid[{pid}] is not in group")
+                            }
+                            Err(err) => {
+                                log::error!(target: "WorkerManager.run", "fork failed {err}")
+                            }
+                        }
+                    }
+                }
                 Err(e) => {
                     log::error!(target: "WorkerManager.run", "wait error {e}");
                     return;
