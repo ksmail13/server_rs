@@ -2,11 +2,18 @@ use std::fmt::Display;
 
 pub enum HttpVersion {
     Http10,
+    Http11,
 }
 
 impl HttpVersion {
-    pub fn parse(_: &str) -> Option<Self> {
-        return Some(HttpVersion::Http10);
+    pub fn parse(str: &str) -> Option<Self> {
+        return if str.eq_ignore_ascii_case("http/1.0") {
+            Some(HttpVersion::Http10)
+        } else if str.eq_ignore_ascii_case("http/1.1") {
+            Some(HttpVersion::Http11)
+        } else {
+            None
+        };
     }
 }
 
@@ -18,7 +25,10 @@ impl Default for HttpVersion {
 
 impl Display for HttpVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f.write_str("HTTP/1.0");
+        return f.write_str(match self {
+            HttpVersion::Http10 => "HTTP/1.0",
+            HttpVersion::Http11 => "HTTP/1.1",
+        });
     }
 }
 
@@ -26,6 +36,7 @@ impl Clone for HttpVersion {
     fn clone(&self) -> Self {
         match self {
             Self::Http10 => Self::Http10,
+            Self::Http11 => Self::Http11,
         }
     }
 }
@@ -124,19 +135,23 @@ impl HttpResponseCode {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
     #[allow(dead_code)]
     ParseFail(String),
     ReadFail(String),
+    WriteFail(String),
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Error::ParseFail(m) | Error::ReadFail(m) => {
-                f.write_fmt(format_args!("HttpError: {}", m))
-            }
+        let name = match self {
+            Error::ParseFail(m) => ("parse fail", m),
+            Error::ReadFail(m) => ("read fail", m),
+            Error::WriteFail(m) => ("write fail", m),
         };
+
+        return f.write_fmt(format_args!("HttpError: [{}] {}", name.0, name.1));
     }
 }
