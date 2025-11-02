@@ -3,6 +3,7 @@ use std::{collections::HashMap, io::BufReader, net::TcpStream};
 
 use crate::http::value::{HttpMethod, HttpVersion};
 
+#[allow(dead_code)]
 pub struct HttpRequest<'a> {
     remote_addr: &'a std::net::SocketAddr,
     method: HttpMethod,
@@ -14,10 +15,11 @@ pub struct HttpRequest<'a> {
     // TODO : 필요한건 나중에 추가
 }
 
+#[allow(dead_code)]
 impl<'a> HttpRequest<'a> {
     pub fn new(
         remote_addr: &'a std::net::SocketAddr,
-        method: String,
+        method: HttpMethod,
         http_version: HttpVersion,
         path: String,
         header: HashMap<&'a str, Vec<&'a str>>,
@@ -26,7 +28,7 @@ impl<'a> HttpRequest<'a> {
     ) -> Self {
         return HttpRequest {
             remote_addr,
-            method: HttpMethod::parse(method.as_str()),
+            method: method,
             http_version,
             path,
             header,
