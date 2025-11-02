@@ -6,13 +6,14 @@ use std::{
 pub mod echo;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Error {
-    #[allow(dead_code)]
     ParseFail { msg: String },
+    IoFail { msg: String },
 }
 
+#[allow(dead_code)]
 pub trait Process {
-    #[allow(dead_code)]
     fn process(&self, stream: TcpStream, client_addr: &SocketAddr)
     -> Result<(usize, usize), Error>;
 
