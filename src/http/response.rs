@@ -9,7 +9,8 @@ use crate::http::value::{HttpResponseCode, HttpVersion};
 pub struct HttpResponse<'a> {
     version: HttpVersion,
     code: HttpResponseCode,
-    header: HashMap<String, Vec<String>>,
+    header: HashMap<&'static str, Vec<String>>,
+    header_str: HashMap<String, Vec<String>>,
     writer: BufWriter<&'a TcpStream>,
     first: bool,
 }
@@ -20,23 +21,57 @@ impl<'a> HttpResponse<'a> {
             version: http_version,
             code: HttpResponseCode::Ok,
             header: HashMap::new(),
+            header_str: HashMap::new(),
             writer: writer,
             first: true,
         };
     }
 }
 
-impl HttpResponse<'_> {
-    pub fn set_response_code(&mut self, code: HttpResponseCode) {
-        self.code = code;
+impl<'a> Write for HttpResponse<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.first {
+            self.first = false;
+            self.write_header()?;
+        }
+        return self.writer.write(buf);
     }
 
-    pub fn set_header(&mut self, key: String, value: String) {
-        if self.header.contains_key(&key) {
-            self.header.get_mut(&key).map(|v| v.push(value));
+    fn flush(&mut self) -> std::io::Result<()> {
+        return self.writer.flush();
+    }
+}
+
+pub trait HeaderSetter<K, V> {
+    fn set_header(&mut self, key: K, value: V);
+}
+
+impl<'a> HeaderSetter<String, String> for HttpResponse<'a> {
+    fn set_header(&mut self, key: String, value: String) {
+        if self.header_str.contains_key(&key) {
+            self.header_str.get_mut(&key).map(|v| v.push(value));
+        } else {
+            self.header_str.insert(key, vec![value]);
+        }
+    }
+}
+
+impl HeaderSetter<&'static str, String> for HttpResponse<'_> {
+    fn set_header(&mut self, key: &'static str, value: String) {
+        if self.header.contains_key(key) {
+            self.header.get_mut(key).map(|v| v.push(value));
         } else {
             self.header.insert(key, vec![value]);
         }
+    }
+}
+
+const LINE_END: &[u8] = "\r\n".as_bytes();
+const KV_SEP: &[u8] = ": ".as_bytes();
+
+impl HttpResponse<'_> {
+    pub fn set_response_code(&mut self, code: HttpResponseCode) {
+        self.code = code;
     }
 
     pub fn write_header(&mut self) -> std::io::Result<usize> {
@@ -47,44 +82,32 @@ impl HttpResponse<'_> {
             self.code.reason()
         );
 
-        let mut written = match write!(self.writer, "{}\r\n", status_line) {
-            Ok(_) => status_line.len() + 1,
-            Err(e) => return Err(e),
-        };
+        let mut written = self.writer.write(status_line.as_bytes())?;
+        written += self.writer.write(LINE_END)?;
 
-        for (k, v) in self.header.clone().into_iter() {
-            let header_line = format!("{}: {}\r\n", k, v.join(";"));
-            match writeln!(self.writer, "{}", header_line) {
-                Err(err) => return Err(err),
-                Ok(_) => written += header_line.len() + 1,
+        if !self.header.is_empty() {
+            for (k, v) in self.header.clone().into_iter() {
+                written += self.write_header_value(&k.as_bytes(), &v.join(";").as_bytes())?;
             }
         }
+
+        if !self.header_str.is_empty() {
+            for (k, v) in self.header_str.clone().into_iter() {
+                written += self.write_header_value(&k.as_bytes(), &v.join(";").as_bytes())?;
+            }
+        }
+
+        written += self.writer.write(LINE_END)?;
 
         return Ok(written);
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if self.first {
-            if let Err(err) = self.write_header() {
-                return Err(err);
-            }
+    fn write_header_value(&mut self, k: &[u8], v: &[u8]) -> std::io::Result<usize> {
+        let mut written = self.writer.write(k)?;
+        written += self.writer.write(KV_SEP)?;
+        written += self.writer.write(v)?;
+        written += self.writer.write(LINE_END)?;
 
-            if let Err(e) = write!(self.writer, "\r\n") {
-                return Err(e);
-            }
-
-            self.first = false;
-        }
-
-        return self.writer.write(buf);
-    }
-
-    #[allow(dead_code)]
-    pub fn write_vectored(&mut self, buf: &Vec<u8>) -> std::io::Result<usize> {
-        return self.write(buf.as_slice());
-    }
-
-    pub fn flush(&mut self) -> std::io::Result<()> {
-        return self.writer.flush();
+        return Ok(written);
     }
 }
