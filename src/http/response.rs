@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufWriter, Write},
+    io::{IoSlice, Write},
     net::TcpStream,
 };
 
@@ -11,45 +11,70 @@ pub struct HttpResponse<'a> {
     code: HttpResponseCode,
     header: HashMap<&'static str, Vec<String>>,
     header_str: HashMap<String, Vec<String>>,
-    writer: BufWriter<&'a TcpStream>,
-    first: bool,
+    writer: &'a TcpStream,
+    buffer: Vec<Vec<u8>>,
 }
 
 impl<'a> HttpResponse<'a> {
-    pub fn new(http_version: HttpVersion, writer: BufWriter<&'a TcpStream>) -> Self {
+    pub fn new(http_version: HttpVersion, writer: &'a TcpStream) -> Self {
         return Self {
             version: http_version,
             code: HttpResponseCode::Ok,
             header: HashMap::new(),
             header_str: HashMap::new(),
             writer: writer,
-            first: true,
+            buffer: vec![],
         };
     }
 }
 
 impl<'a> Write for HttpResponse<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if self.first {
-            self.first = false;
-            self.write_header()?;
-        }
-        return self.writer.write(buf);
+        self.buffer.push(buf.to_vec());
+
+        return Ok(buf.len());
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+        self.set_header(
+            "Content-Length",
+            self.buffer
+                .iter()
+                .map(|b| b.len())
+                .sum::<usize>()
+                .to_string(),
+        );
+        self.write_header()?;
+
+        let data: Vec<IoSlice<'_>> = self.buffer.iter().map(|b| IoSlice::new(&b)).collect();
+        self.writer.write_vectored(&data)?;
+
         return self.writer.flush();
     }
 }
 
+#[allow(dead_code)]
 pub trait HeaderSetter<K, V> {
     fn set_header(&mut self, key: K, value: V);
+
+    fn add_header(&mut self, key: K, value: V);
 }
 
 impl<'a> HeaderSetter<String, String> for HttpResponse<'a> {
-    fn set_header(&mut self, key: String, value: String) {
+    fn add_header(&mut self, key: String, value: String) {
         if self.header_str.contains_key(&key) {
             self.header_str.get_mut(&key).map(|v| v.push(value));
+        } else {
+            self.header_str.insert(key, vec![value]);
+        }
+    }
+
+    fn set_header(&mut self, key: String, value: String) {
+        if self.header_str.contains_key(&key) {
+            self.header_str.get_mut(&key).map(|v| {
+                v.clear();
+                v.push(value);
+            });
         } else {
             self.header_str.insert(key, vec![value]);
         }
@@ -58,6 +83,17 @@ impl<'a> HeaderSetter<String, String> for HttpResponse<'a> {
 
 impl HeaderSetter<&'static str, String> for HttpResponse<'_> {
     fn set_header(&mut self, key: &'static str, value: String) {
+        if self.header.contains_key(key) {
+            self.header.get_mut(key).map(|v| {
+                v.clear();
+                v.push(value);
+            });
+        } else {
+            self.header.insert(key, vec![value]);
+        }
+    }
+
+    fn add_header(&mut self, key: &'static str, value: String) {
         if self.header.contains_key(key) {
             self.header.get_mut(key).map(|v| v.push(value));
         } else {

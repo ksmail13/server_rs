@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufRead, BufReader, Write},
     net::TcpStream,
     time::Duration,
 };
@@ -16,7 +16,6 @@ use crate::{
 };
 
 pub struct Http1<T: Handler> {
-    write_buffer_size: usize,
     handler: T,
 }
 
@@ -46,12 +45,10 @@ where
         let res_request: Result<HttpRequest<'_>, Error> =
             self.init_request(client_addr, &headers, reader);
         if let Err(err) = res_request {
-            let mut response = HttpResponse::new(
-                HttpVersion::default(),
-                BufWriter::with_capacity(self.write_buffer_size, &stream),
-            );
+            let mut response = HttpResponse::new(HttpVersion::default(), &stream);
 
             response.set_response_code(HttpResponseCode::BadRequest);
+            response.set_header("Server", "server_rs".to_string());
             response.set_header("Content-Type", "text/plain".to_string());
             let _ = response.write("Invalid request".as_bytes());
             let _ = response.flush();
@@ -62,10 +59,7 @@ where
         }
 
         let mut request = res_request.unwrap();
-        let mut response = HttpResponse::new(
-            request.version(),
-            BufWriter::with_capacity(self.write_buffer_size, &stream),
-        );
+        let mut response = HttpResponse::new(HttpVersion::Http10, &stream);
 
         self.handler.handle(&mut request, &mut response);
 
@@ -87,11 +81,8 @@ impl<T> Http1<T>
 where
     T: Handler,
 {
-    pub fn new(buffer_size: usize, handler: T) -> Self {
-        return Http1 {
-            write_buffer_size: buffer_size,
-            handler,
-        };
+    pub fn new(handler: T) -> Self {
+        return Http1 { handler };
     }
 
     fn read_header<'a>(

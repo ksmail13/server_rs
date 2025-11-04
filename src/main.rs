@@ -30,7 +30,7 @@ impl Handler for SimpleHandler {
             }
         }
 
-        res.set_header("content-type", "text/plain".to_string());
+        res.set_header("Content-Type", "text/plain".to_string());
     }
 }
 
@@ -49,7 +49,7 @@ fn main() {
         host: arg.host.clone(),
         port: arg.port,
         worker: arg.worker,
-        process: Rc::new(Http1::new(8196, SimpleHandler)),
+        process: Rc::new(Http1::new(SimpleHandler)),
     }];
 
     let mut server = Server::new(ServerArgs {
