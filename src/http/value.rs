@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, hash::Hash};
 
 pub enum HttpVersion {
     Http10,
@@ -153,5 +153,34 @@ impl std::fmt::Display for Error {
         };
 
         return f.write_fmt(format_args!("HttpError: [{}] {}", name.0, name.1));
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone)]
+pub struct WeightedValue {
+    value: String,
+    weight: Option<f64>,
+}
+
+impl Eq for WeightedValue {}
+
+impl Hash for WeightedValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+        if let Some(weight) = self.weight {
+            weight.to_bits().hash(state);
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl WeightedValue {
+    pub fn value(&self) -> &String {
+        &self.value
+    }
+
+    pub fn weight(&self) -> Option<f64> {
+        self.weight
     }
 }

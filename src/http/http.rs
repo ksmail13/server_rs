@@ -2,12 +2,13 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
     net::TcpStream,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use crate::{
     http::{
         handler::Handler,
+        header::{HttpHeaderValue, content_type, date, server},
         request::HttpRequest,
         response::{HeaderSetter, HttpResponse},
         value::{Error, HttpMethod, HttpResponseCode, HttpVersion},
@@ -48,8 +49,9 @@ where
             let mut response = HttpResponse::new(HttpVersion::default(), &stream);
 
             response.set_response_code(HttpResponseCode::BadRequest);
-            response.set_header("Server", "server_rs".to_string());
-            response.set_header("Content-Type", "text/plain".to_string());
+            response.set_header(&server(HttpHeaderValue::Str("server_rs")));
+            response.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
+            response.set_header(&date(SystemTime::now()));
             let _ = response.write("Invalid request".as_bytes());
             let _ = response.flush();
 

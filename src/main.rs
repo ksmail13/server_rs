@@ -4,7 +4,13 @@ use std::io::Write;
 use std::rc::Rc;
 
 use crate::{
-    http::{handler::Handler, http::Http1, response::HeaderSetter, value::HttpResponseCode},
+    http::{
+        handler::Handler,
+        header::{HttpHeaderValue, content_type},
+        http::Http1,
+        response::HeaderSetter,
+        value::HttpResponseCode,
+    },
     server::{Server, ServerArgs, WorkerInfo},
 };
 
@@ -30,7 +36,7 @@ impl Handler for SimpleHandler {
             }
         }
 
-        res.set_header("Content-Type", "text/plain".to_string());
+        res.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
     }
 }
 

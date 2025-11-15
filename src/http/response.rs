@@ -2,15 +2,20 @@ use std::{
     collections::HashMap,
     io::{IoSlice, Write},
     net::TcpStream,
+    rc::Rc,
+    time::SystemTime,
 };
 
-use crate::http::value::{HttpResponseCode, HttpVersion};
+use crate::http::{
+    header::{HttpHeader, content_length, date},
+    value::{HttpResponseCode, HttpVersion},
+};
 
 pub struct HttpResponse<'a> {
     version: HttpVersion,
     code: HttpResponseCode,
-    header: HashMap<&'static str, Vec<String>>,
-    header_str: HashMap<String, Vec<String>>,
+    header: HashMap<&'static str, Rc<dyn crate::http::header::ToString>>,
+    header_str: HashMap<Rc<String>, Rc<dyn crate::http::header::ToString>>,
     writer: &'a TcpStream,
     buffer: Vec<Vec<u8>>,
 }
@@ -36,14 +41,10 @@ impl<'a> Write for HttpResponse<'a> {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.set_header(
-            "Content-Length",
-            self.buffer
-                .iter()
-                .map(|b| b.len())
-                .sum::<usize>()
-                .to_string(),
-        );
+        self.set_header(&content_length(
+            self.buffer.iter().map(|b| b.len()).sum::<usize>(),
+        ));
+        self.set_header(&date(SystemTime::now()));
         self.write_header()?;
 
         let data: Vec<IoSlice<'_>> = self.buffer.iter().map(|b| IoSlice::new(&b)).collect();
@@ -54,50 +55,17 @@ impl<'a> Write for HttpResponse<'a> {
 }
 
 #[allow(dead_code)]
-pub trait HeaderSetter<K, V> {
-    fn set_header(&mut self, key: K, value: V);
-
-    fn add_header(&mut self, key: K, value: V);
+pub trait HeaderSetter<T> {
+    fn set_header(&mut self, header: T);
 }
 
-impl<'a> HeaderSetter<String, String> for HttpResponse<'a> {
-    fn add_header(&mut self, key: String, value: String) {
-        if self.header_str.contains_key(&key) {
-            self.header_str.get_mut(&key).map(|v| v.push(value));
-        } else {
-            self.header_str.insert(key, vec![value]);
-        }
-    }
-
-    fn set_header(&mut self, key: String, value: String) {
-        if self.header_str.contains_key(&key) {
-            self.header_str.get_mut(&key).map(|v| {
-                v.clear();
-                v.push(value);
-            });
-        } else {
-            self.header_str.insert(key, vec![value]);
-        }
-    }
-}
-
-impl HeaderSetter<&'static str, String> for HttpResponse<'_> {
-    fn set_header(&mut self, key: &'static str, value: String) {
-        if self.header.contains_key(key) {
-            self.header.get_mut(key).map(|v| {
-                v.clear();
-                v.push(value);
-            });
-        } else {
-            self.header.insert(key, vec![value]);
-        }
-    }
-
-    fn add_header(&mut self, key: &'static str, value: String) {
-        if self.header.contains_key(key) {
-            self.header.get_mut(key).map(|v| v.push(value));
-        } else {
-            self.header.insert(key, vec![value]);
+impl<'a> HeaderSetter<&HttpHeader> for HttpResponse<'a> {
+    fn set_header(&mut self, header: &HttpHeader) {
+        let value = header.value().clone();
+        if let Some(key) = header.key_str() {
+            self.header.insert(key, value);
+        } else if let Some(key) = header.key_string() {
+            self.header_str.insert(key, value);
         }
     }
 }
@@ -122,14 +90,16 @@ impl HttpResponse<'_> {
         written += self.writer.write(LINE_END)?;
 
         if !self.header.is_empty() {
-            for (k, v) in self.header.clone().into_iter() {
-                written += self.write_header_value(&k.as_bytes(), &v.join(";").as_bytes())?;
+            for (key, value) in self.header.clone().into_iter() {
+                written +=
+                    self.write_header_value(&key.as_bytes(), value.to_string().as_bytes())?;
             }
         }
 
         if !self.header_str.is_empty() {
-            for (k, v) in self.header_str.clone().into_iter() {
-                written += self.write_header_value(&k.as_bytes(), &v.join(";").as_bytes())?;
+            for (key, value) in self.header_str.clone().into_iter() {
+                written +=
+                    self.write_header_value(&key.as_bytes(), value.to_string().as_bytes())?;
             }
         }
 
