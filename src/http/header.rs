@@ -1,8 +1,9 @@
 use std::fmt::Write;
 use std::rc::Rc;
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::http::value::WeightedValue;
+use crate::util::date::Date;
 
 pub trait ToString: std::fmt::Debug {
     fn to_string(&self) -> Rc<String>;
@@ -69,81 +70,18 @@ impl ToString for HeaderValueWeighted {
 
 #[derive(Debug)]
 struct HeaderValueTime {
-    time: std::time::SystemTime,
+    time: Date,
 }
 
 impl HeaderValueTime {
-    const MONTH: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-
-    const MONTH_DATE: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-    const MONTH_DATE_LEAP: [u64; 12] = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-    const WEEK_DAY: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
-
-    fn is_leap_year(&self, year: u64) -> bool {
-        year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-    }
-
-    fn year_and_date(&self, dates: u64) -> (u64, u64, u64) {
-        let mut cnt = dates;
-        let mut year = 1970;
-        let mut month = 0;
-        loop {
-            let whole_year = if self.is_leap_year(year) { 366 } else { 365 };
-
-            if cnt < whole_year {
-                break;
-            }
-            cnt -= whole_year;
-            year += 1;
-        }
-
-        let months = if self.is_leap_year(year) {
-            HeaderValueTime::MONTH_DATE_LEAP
-        } else {
-            HeaderValueTime::MONTH_DATE
-        };
-
-        loop {
-            let month_days = months[month as usize];
-            if cnt < month_days {
-                break;
-            }
-            cnt -= month_days;
-            month += 1;
-        }
-
-        (year, month, cnt + 1)
-    }
-
-    // make SystemTime to rfc1123-date
-    // Mon, 22 Nov 1990 GMT
     fn time_to_header_string(&self) -> String {
-        let epoch_secs = self
-            .time
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        self.time.to_rfc1123()
+    }
 
-        let epoch_mins = epoch_secs / 60;
-        let epoch_hours = epoch_mins / 60;
-        let epoch_days = epoch_hours / 24;
-
-        let (year, month, day) = self.year_and_date(epoch_days);
-
-        format!(
-            "{}, {:02} {} {} {:02}:{:02}:{:02} GMT",
-            HeaderValueTime::WEEK_DAY[(epoch_days % 7) as usize],
-            day,
-            HeaderValueTime::MONTH[month as usize],
-            year,
-            epoch_hours % 24,
-            epoch_mins % 60,
-            epoch_secs % 60
-        )
+    pub fn from_system_time(time: SystemTime) -> Self {
+        Self {
+            time: Date::from(time),
+        }
     }
 }
 
@@ -194,7 +132,7 @@ fn from_string_key(key: String, value: Rc<dyn ToString>) -> HttpHeader {
 
 // common
 pub fn date(time: std::time::SystemTime) -> HttpHeader {
-    return from_str_key("Date", Rc::new(HeaderValueTime { time }));
+    return from_str_key("Date", Rc::new(HeaderValueTime::from_system_time(time)));
 }
 
 // entity
@@ -226,12 +164,15 @@ pub fn content_type(value: HttpHeaderValue) -> HttpHeader {
 
 #[allow(dead_code)]
 pub fn expires(time: std::time::SystemTime) -> HttpHeader {
-    from_str_key("Expires", Rc::new(HeaderValueTime { time }))
+    from_str_key("Expires", Rc::new(HeaderValueTime::from_system_time(time)))
 }
 
 #[allow(dead_code)]
 pub fn last_modified(time: std::time::SystemTime) -> HttpHeader {
-    from_str_key("Last-Modified", Rc::new(HeaderValueTime { time }))
+    from_str_key(
+        "Last-Modified",
+        Rc::new(HeaderValueTime::from_system_time(time)),
+    )
 }
 
 #[allow(dead_code)]
@@ -263,20 +204,15 @@ mod test {
     #[test]
     fn test_time_to_header_string() {
         assert_eq!(
-            HeaderValueTime {
-                time: SystemTime::UNIX_EPOCH
-            }
-            .to_string()
-            .as_ref(),
+            HeaderValueTime::from_system_time(SystemTime::UNIX_EPOCH)
+                .to_string()
+                .as_ref(),
             "Thu, 01 Jan 1970 00:00:00 GMT"
         );
 
         println!(
             "{}",
-            HeaderValueTime {
-                time: SystemTime::now()
-            }
-            .to_string()
+            HeaderValueTime::from_system_time(SystemTime::now()).to_string()
         )
     }
 }

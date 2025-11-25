@@ -18,6 +18,7 @@ mod args;
 mod http;
 mod process;
 mod server;
+mod util;
 mod worker;
 
 struct SimpleHandler;
