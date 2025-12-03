@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::http::value::WeightedValue;
 use crate::util::date::Date;
