@@ -41,7 +41,7 @@ impl Clone for HttpVersion {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HttpMethod {
     GET,
     POST,

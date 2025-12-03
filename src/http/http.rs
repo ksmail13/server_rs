@@ -61,9 +61,11 @@ where
         }
 
         let mut request = res_request.unwrap();
-        let mut response = HttpResponse::new(HttpVersion::Http10, &stream);
+        let mut response = HttpResponse::from_request(&request, &stream);
 
         self.handler.handle(&mut request, &mut response);
+
+        response.set_header(&server(HttpHeaderValue::Str("server_rs")));
 
         if let Err(err) = response.flush() {
             return Err(process::Error::IoFail {

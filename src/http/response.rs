@@ -8,7 +8,8 @@ use std::{
 
 use crate::http::{
     header::{HttpHeader, content_length, date},
-    value::{HttpResponseCode, HttpVersion},
+    request::HttpRequest,
+    value::{HttpMethod, HttpResponseCode, HttpVersion},
 };
 
 pub struct HttpResponse<'a> {
@@ -18,17 +19,31 @@ pub struct HttpResponse<'a> {
     header_str: HashMap<Rc<String>, Rc<dyn crate::http::header::ToString>>,
     writer: &'a TcpStream,
     buffer: Vec<Vec<u8>>,
+    header_only: bool,
 }
 
 impl<'a> HttpResponse<'a> {
-    pub fn new(http_version: HttpVersion, writer: &'a TcpStream) -> Self {
+    pub fn new(version: HttpVersion, writer: &'a TcpStream) -> Self {
         return Self {
-            version: http_version,
+            version: version,
             code: HttpResponseCode::Ok,
             header: HashMap::new(),
             header_str: HashMap::new(),
             writer: writer,
             buffer: vec![],
+            header_only: false,
+        };
+    }
+
+    pub fn from_request(request: &HttpRequest, writer: &'a TcpStream) -> Self {
+        return Self {
+            version: request.version(),
+            code: HttpResponseCode::Ok,
+            header: HashMap::new(),
+            header_str: HashMap::new(),
+            writer: writer,
+            buffer: vec![],
+            header_only: request.method() == HttpMethod::HEAD,
         };
     }
 }
@@ -46,6 +61,10 @@ impl<'a> Write for HttpResponse<'a> {
         ));
         self.set_header(&date(SystemTime::now()));
         self.write_header()?;
+
+        if self.header_only {
+            return self.writer.flush();
+        }
 
         let data: Vec<IoSlice<'_>> = self.buffer.iter().map(|b| IoSlice::new(&b)).collect();
         self.writer.write_vectored(&data)?;
