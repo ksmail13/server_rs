@@ -3,28 +3,23 @@ use clap::Parser;
 use std::io::Write;
 use std::rc::Rc;
 
-use crate::{
-    http::{
-        handler::Handler,
-        header::{HttpHeaderValue, content_type},
-        http::Http1,
-        response::HeaderSetter,
-        value::HttpResponseCode,
-    },
-    server::{Server, ServerArgs, WorkerInfo},
+use server_rs_tcp::{Server, ServerArgs, WorkerInfo};
+
+use server_rs_http::{
+    Http1,
+    handler::Handler,
+    header::{HttpHeaderValue, content_type},
+    request::HttpRequest,
+    response::{HeaderSetter, HttpResponse},
+    value::HttpResponseCode,
 };
 
 mod args;
-mod http;
-mod process;
-mod server;
-mod util;
-mod worker;
 
 struct SimpleHandler;
 
 impl Handler for SimpleHandler {
-    fn handle(&self, req: &mut http::request::HttpRequest, res: &mut http::response::HttpResponse) {
+    fn handle(&self, req: &mut HttpRequest, res: &mut HttpResponse) {
         res.set_response_code(HttpResponseCode::Ok);
 
         if let Err(e) = writeln!(res, "response") {

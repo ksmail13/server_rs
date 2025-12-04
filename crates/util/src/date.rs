@@ -15,7 +15,7 @@ pub struct Date {
 impl From<SystemTime> for Date {
     fn from(value: SystemTime) -> Self {
         Date::from_system_time(value)
-    }
+    } 
 }
 
 impl Date {

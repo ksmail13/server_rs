@@ -1,0 +1,15 @@
+[package]
+name = "server_rs_worker"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "server_rs_worker"
+path = "src/lib.rs"
+
+[dependencies]
+nix = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+colog = { workspace = true }

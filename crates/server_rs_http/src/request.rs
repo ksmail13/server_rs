@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::{collections::HashMap, io::BufReader, net::TcpStream};
 
-use crate::http::value::{HttpMethod, HttpVersion};
+use crate::value::{HttpMethod, HttpVersion};
 
 #[allow(dead_code)]
 pub struct HttpRequest<'a> {

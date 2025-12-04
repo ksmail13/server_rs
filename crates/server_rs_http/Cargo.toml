@@ -1,0 +1,13 @@
+[package]
+name = "server_rs_http"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+server_rs_tcp = { path = "../server_rs_tcp" }
+util = { path = "../util" }
+log = { workspace = true }
+
+[lib]
+name = "server_rs_http"
+path = "src/lib.rs"

@@ -8,12 +8,11 @@ use nix::sys::{
     time::TimeVal,
 };
 
-use crate::{
-    process::Process,
-    worker::{group::WorkerGroup, manager::WorkerManager},
-};
+use server_rs_worker::{group::WorkerGroup, manager::WorkerManager};
 
-mod worker;
+use crate::process::Process;
+
+mod tcp_worker;
 
 pub struct WorkerInfo {
     pub host: String,
@@ -77,7 +76,7 @@ impl Server {
             .map(|i| {
                 return WorkerGroup::new(
                     i.worker,
-                    Rc::new(worker::TcpWorker {
+                    Rc::new(tcp_worker::TcpWorker {
                         timeout_ms: config.timeout_ms,
                         listeners: listeners.clone(),
                         host: format!("{}:{}", i.host, i.port),

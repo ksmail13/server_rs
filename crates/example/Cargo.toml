@@ -1,0 +1,18 @@
+[package]
+name = "example"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "example"
+path = "src/main.rs"
+
+[dependencies]
+server_rs_worker = { version = "0.1.0", path = "../server_rs_worker" }
+server_rs_tcp = { version = "0.1.0", path = "../server_rs_tcp" }
+server_rs_http = { version = "0.1.0", path = "../server_rs_http" }
+util = { version = "0.1.0", path = "../util" }
+colog = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

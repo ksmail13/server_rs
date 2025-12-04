@@ -6,15 +6,20 @@ use std::{
 };
 
 use crate::{
-    http::{
-        handler::Handler,
-        header::{HttpHeaderValue, content_type, date, server},
-        request::HttpRequest,
-        response::{HeaderSetter, HttpResponse},
-        value::{Error, HttpMethod, HttpResponseCode, HttpVersion},
-    },
-    process::{self, Process},
+    handler::Handler,
+    header::{HttpHeaderValue, content_type, date, server},
+    request::HttpRequest,
+    response::{HeaderSetter, HttpResponse},
+    value::{Error, HttpMethod, HttpResponseCode, HttpVersion},
 };
+
+use server_rs_tcp::process::{self, Process};
+
+pub mod handler;
+pub mod header;
+pub mod request;
+pub mod response;
+pub mod value;
 
 pub struct Http1<T: Handler> {
     handler: T,
@@ -218,7 +223,7 @@ fn put_data_to_hashmap<'a>(map: &mut HashMap<&'a str, Vec<&'a str>>, key: &'a st
 
 #[cfg(test)]
 mod test {
-    use crate::http::http::parse_url;
+    use crate::parse_url;
 
     #[test]
     fn test_parse_url() {

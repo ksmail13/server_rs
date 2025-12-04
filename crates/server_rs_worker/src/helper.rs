@@ -9,7 +9,7 @@ use nix::{
     unistd::{ForkResult, Pid, fork},
 };
 
-use crate::worker::{error::WaitError, group::WorkerGroup};
+use crate::{error::WaitError, group::WorkerGroup};
 
 pub struct WorkerGenerator;
 

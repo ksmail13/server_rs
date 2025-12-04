@@ -1,0 +1,13 @@
+[package]
+name = "server_rs_tcp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nix = { workspace = true }
+log = { workspace = true }
+server_rs_worker = { version = "0.1.0", path = "../server_rs_worker" }
+
+[lib]
+name = "server_rs_tcp"
+path = "src/lib.rs"

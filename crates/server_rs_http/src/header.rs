@@ -2,8 +2,8 @@ use std::fmt::Write;
 use std::rc::Rc;
 use std::time::SystemTime;
 
-use crate::http::value::WeightedValue;
-use crate::util::date::Date;
+use crate::value::WeightedValue;
+use util::date::Date;
 
 pub trait ToString: std::fmt::Debug {
     fn to_string(&self) -> Rc<String>;
@@ -199,7 +199,7 @@ pub fn www_authenticate(value: HttpHeaderValue) -> HttpHeader {
 mod test {
     use std::time::SystemTime;
 
-    use crate::http::header::{HeaderValueTime, ToString};
+    use crate::header::{HeaderValueTime, ToString};
 
     #[test]
     fn test_time_to_header_string() {

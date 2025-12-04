@@ -16,7 +16,7 @@ use nix::{
 };
 
 use crate::process::Process;
-use crate::worker::Worker;
+use server_rs_worker::Worker;
 
 static mut RUNNING: bool = true;
 

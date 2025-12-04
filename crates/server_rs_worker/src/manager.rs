@@ -5,7 +5,7 @@ use nix::{
     unistd::Pid,
 };
 
-use crate::worker::{
+use crate::{
     error::WaitError,
     group::WorkerGroup,
     helper::{WorkerCleaner, WorkerGenerator},
@@ -156,7 +156,7 @@ mod test {
         unistd::getpid,
     };
 
-    use crate::worker::Worker;
+    use crate::Worker;
 
     use super::*;
 

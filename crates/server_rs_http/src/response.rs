@@ -6,7 +6,7 @@ use std::{
     time::SystemTime,
 };
 
-use crate::http::{
+use crate::{
     header::{HttpHeader, content_length, date},
     request::HttpRequest,
     value::{HttpMethod, HttpResponseCode, HttpVersion},
@@ -15,8 +15,8 @@ use crate::http::{
 pub struct HttpResponse<'a> {
     version: HttpVersion,
     code: HttpResponseCode,
-    header: HashMap<&'static str, Rc<dyn crate::http::header::ToString>>,
-    header_str: HashMap<Rc<String>, Rc<dyn crate::http::header::ToString>>,
+    header: HashMap<&'static str, Rc<dyn crate::header::ToString>>,
+    header_str: HashMap<Rc<String>, Rc<dyn crate::header::ToString>>,
     writer: &'a TcpStream,
     buffer: Vec<Vec<u8>>,
     header_only: bool,

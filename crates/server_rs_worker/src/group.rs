@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::worker::Worker;
+use crate::Worker;
 
 pub struct WorkerGroup {
     pub count: u32,
