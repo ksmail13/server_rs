@@ -38,11 +38,11 @@ where
         let mut reader = BufReader::new(&stream);
         let header_res: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
         if let Err(err) = header_res {
-            return Err(process::Error::IoFail {
-                msg: format!("Read header failed: ({})", err),
-            });
+            return Err(process::Error::IoFail(format!("Read header failed: ({})", err)));
         }
+
         let (header_readed, headers) = header_res.unwrap();
+
         let res_request: Result<HttpRequest<'_>, Error> =
             self.init_request(client_addr, &headers, reader);
         if let Err(err) = res_request {
@@ -55,22 +55,18 @@ where
             let _ = response.write("Invalid request".as_bytes());
             let _ = response.flush();
 
-            return Err(process::Error::ParseFail {
-                msg: err.to_string(),
-            });
+            return Err(process::Error::ParseFail(err.to_string()));
         }
 
         let mut request = res_request.unwrap();
         let mut response = HttpResponse::from_request(&request, &stream);
 
-        self.handler.handle(&mut request, &mut response);
-
         response.set_header(&server(HttpHeaderValue::Str("server_rs")));
 
+        self.handler.handle(&mut request, &mut response);
+
         if let Err(err) = response.flush() {
-            return Err(process::Error::IoFail {
-                msg: err.to_string(),
-            });
+            return Err(process::Error::IoFail(err.to_string()));
         }
 
         return Ok((header_readed, 0));
@@ -129,6 +125,10 @@ where
             res.push(buf);
         }
 
+        if readed == 0 {
+            return Err(Error::ReadFail(format!("EOF")));
+        }
+
         return Ok((readed, res));
     }
 
@@ -151,11 +151,9 @@ where
         let path_query = req_line
             .next()
             .ok_or_else(|| Error::ParseFail(format!("invalid request line: {}", buf)))?;
-        let ver_str = req_line
-            .next()
-            .ok_or_else(|| Error::ParseFail(format!("invalid request line: {}", buf)))?;
 
-        let version = HttpVersion::parse(ver_str).unwrap_or_default();
+        // 1.1 구현 후 반영
+        let version = HttpVersion::default();
 
         let (path, param) = parse_url(path_query);
 

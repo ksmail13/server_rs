@@ -19,7 +19,7 @@ impl HttpVersion {
 
 impl Default for HttpVersion {
     fn default() -> Self {
-        return HttpVersion::Http10;
+        return Self::Http10;
     }
 }
 

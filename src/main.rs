@@ -1,5 +1,6 @@
 use args::Args;
 use clap::Parser;
+use nix::unistd::getpid;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -12,6 +13,7 @@ use crate::{
         value::HttpResponseCode,
     },
     server::{Server, ServerArgs, WorkerInfo},
+    util::date::Date,
 };
 
 mod args;
@@ -43,9 +45,20 @@ impl Handler for SimpleHandler {
 
 fn main() {
     colog::basic_builder()
-        .default_format()
         .filter_level(log::LevelFilter::Info)
-        .format_line_number(true)
+        .format(|f, record| {
+            writeln!(
+                f,
+                "{} [{:>25}:{:4}] [pid: {:>6}] [{}]\t{} {}",
+                Date::from_system_time(std::time::SystemTime::now()).to_rfc1123(),
+                record.file().unwrap_or(""),
+                record.line().unwrap_or(0),
+                getpid(),
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        })
         .write_style(env_logger::fmt::WriteStyle::Always)
         .init();
 

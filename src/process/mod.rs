@@ -8,8 +8,8 @@ pub mod echo;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum Error {
-    ParseFail { msg: String },
-    IoFail { msg: String },
+    ParseFail(String),
+    IoFail(String),
 }
 
 #[allow(dead_code)]

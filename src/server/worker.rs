@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, net::TcpListener, os::fd::AsRawFd, process::exit, rc::Rc, time::Duration,
+    collections::HashMap, net::TcpListener, os::fd::AsRawFd, process::exit, rc::Rc, time::Duration
 };
 
 use nix::{
