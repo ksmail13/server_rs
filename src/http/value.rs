@@ -5,6 +5,7 @@ pub enum HttpVersion {
     Http11,
 }
 
+#[allow(dead_code)]
 impl HttpVersion {
     pub fn parse(str: &str) -> Option<Self> {
         return if str.eq_ignore_ascii_case("http/1.0") {
