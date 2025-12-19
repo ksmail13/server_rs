@@ -84,6 +84,3 @@ Tests cover:
 - Echo server logic (`process/echo.rs`)
 - Worker manager integration (`worker/manager.rs`)
 
-## License
-
-This project is licensed under the MIT license. See the `LICENSE` file in the repository root.
