@@ -17,6 +17,7 @@ The worker processes communicate with the parent via `fork` and `wait` system ca
 
 ## Project Layout
 
+```
 server_rs/
 ├── src/
 │   ├── args.rs              # CLI arguments
@@ -43,6 +44,7 @@ server_rs/
 ├── Cargo.toml
 ├── Cargo.lock
 └── README.md
+```
 
 ## Getting Started
 
