@@ -13,4 +13,6 @@ pub struct Args {
     pub worker: u32,
     #[arg(short, long, default_value_t = 500)]
     pub timeout_ms: u64,
+    #[arg(long, default_value_t = 8196)]
+    pub max_header_size: usize,
 }

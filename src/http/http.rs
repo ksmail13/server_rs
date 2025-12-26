@@ -1,13 +1,13 @@
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     time::{Duration, SystemTime},
 };
 
 use crate::{
     http::{
-        handler::Handler,
+        handler::{ErrorHandler, Handler},
         header::{HttpHeaderValue, content_type, date, server},
         request::HttpRequest,
         response::{HeaderSetter, HttpResponse},
@@ -16,13 +16,16 @@ use crate::{
     process::{self, Process},
 };
 
-pub struct Http1<T: Handler> {
+pub struct Http1<T: Handler, E: ErrorHandler> {
+    max_header_length: usize,
     handler: T,
+    error_handler: E,
 }
 
-impl<T> Process for Http1<T>
+impl<T, E> Process for Http1<T, E>
 where
     T: Handler,
+    E: ErrorHandler,
 {
     fn process(
         &self,
@@ -36,7 +39,7 @@ where
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
         let mut reader = BufReader::new(&stream);
-        let header_res: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
+        let header_res: Result<(usize, Vec<String>), Error> = self.read_header(client_addr, &mut reader);
         if let Err(err) = header_res {
             return Err(process::Error::IoFail(format!("Read header failed: ({})", err)));
         }
@@ -77,16 +80,18 @@ where
     }
 }
 
-impl<T> Http1<T>
+impl<T, E> Http1<T, E>
 where
     T: Handler,
+    E: ErrorHandler,
 {
-    pub fn new(handler: T) -> Self {
-        return Http1 { handler };
+    pub fn new(max_header_length: usize, handler: T, error_handler: E) -> Self {
+        return Http1 { max_header_length, handler, error_handler };
     }
 
     fn read_header<'a>(
         &self,
+        client_addr: &SocketAddr,
         reader: &mut BufReader<&'a TcpStream>,
     ) -> Result<(usize, Vec<String>), Error> {
         let mut res = vec![];
@@ -98,6 +103,10 @@ where
                 return Err(Error::ReadFail(format!("{}", err)));
             }
             readed += result.unwrap();
+
+            if readed > self.max_header_length {
+                return Err(Error::BadRequest(client_addr.clone(), "header size limit exceed"));
+            }
 
             while buf
                 .chars()
@@ -184,6 +193,10 @@ where
         }
 
         return header_map;
+    }
+
+    fn error_handler_for_invalid_request(res: &mut HttpResponse, err: Error) {
+        
     }
 }
 

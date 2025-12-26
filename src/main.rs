@@ -69,7 +69,7 @@ fn main() {
         host: arg.host.clone(),
         port: arg.port,
         worker: arg.worker,
-        process: Rc::new(Http1::new(SimpleHandler)),
+        process: Rc::new(Http1::new(arg.max_header_size, SimpleHandler)),
     }];
 
     let mut server = Server::new(ServerArgs {
