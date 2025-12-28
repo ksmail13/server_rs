@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     http::{
-        handler::{ErrorHandler, Handler},
+        handler::Handler,
         header::{HttpHeaderValue, content_type, date, server},
         request::HttpRequest,
         response::{HeaderSetter, HttpResponse},
@@ -16,16 +16,14 @@ use crate::{
     process::{self, Process},
 };
 
-pub struct Http1<T: Handler, E: ErrorHandler> {
+pub struct Http1<T: Handler> {
     max_header_length: usize,
     handler: T,
-    error_handler: E,
 }
 
-impl<T, E> Process for Http1<T, E>
+impl<T> Process for Http1<T>
 where
     T: Handler,
-    E: ErrorHandler,
 {
     fn process(
         &self,
@@ -39,9 +37,14 @@ where
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
         let mut reader = BufReader::new(&stream);
-        let header_res: Result<(usize, Vec<String>), Error> = self.read_header(client_addr, &mut reader);
+        let header_res: Result<(usize, Vec<String>), Error> =
+            self.read_header(client_addr, &mut reader);
         if let Err(err) = header_res {
-            return Err(process::Error::IoFail(format!("Read header failed: ({})", err)));
+            self.error_response_for_invalid_request(&stream);
+            return Err(process::Error::IoFail(format!(
+                "Read header failed: ({})",
+                err
+            )));
         }
 
         let (header_readed, headers) = header_res.unwrap();
@@ -49,15 +52,7 @@ where
         let res_request: Result<HttpRequest<'_>, Error> =
             self.init_request(client_addr, &headers, reader);
         if let Err(err) = res_request {
-            let mut response = HttpResponse::new(HttpVersion::default(), &stream);
-
-            response.set_response_code(HttpResponseCode::BadRequest);
-            response.set_header(&server(HttpHeaderValue::Str("server_rs")));
-            response.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
-            response.set_header(&date(SystemTime::now()));
-            let _ = response.write("Invalid request".as_bytes());
-            let _ = response.flush();
-
+            self.error_response_for_invalid_request(&stream);
             return Err(process::Error::ParseFail(err.to_string()));
         }
 
@@ -80,13 +75,15 @@ where
     }
 }
 
-impl<T, E> Http1<T, E>
+impl<T> Http1<T>
 where
     T: Handler,
-    E: ErrorHandler,
 {
-    pub fn new(max_header_length: usize, handler: T, error_handler: E) -> Self {
-        return Http1 { max_header_length, handler, error_handler };
+    pub fn new(max_header_length: usize, handler: T) -> Self {
+        return Http1 {
+            max_header_length,
+            handler,
+        };
     }
 
     fn read_header<'a>(
@@ -105,7 +102,10 @@ where
             readed += result.unwrap();
 
             if readed > self.max_header_length {
-                return Err(Error::BadRequest(client_addr.clone(), "header size limit exceed"));
+                return Err(Error::BadRequest(
+                    client_addr.clone(),
+                    "header size limit exceed",
+                ));
             }
 
             while buf
@@ -195,8 +195,15 @@ where
         return header_map;
     }
 
-    fn error_handler_for_invalid_request(res: &mut HttpResponse, err: Error) {
-        
+    fn error_response_for_invalid_request(&self, stream: &TcpStream) {
+        let mut response = HttpResponse::new(HttpVersion::default(), stream);
+
+        response.set_response_code(HttpResponseCode::BadRequest);
+        response.set_header(&server(HttpHeaderValue::Str("server_rs")));
+        response.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
+        response.set_header(&date(SystemTime::now()));
+        let _ = response.write("Invalid request".as_bytes());
+        let _ = response.flush();
     }
 }
 
