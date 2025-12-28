@@ -59,7 +59,8 @@ Run
   --host 127.0.0.1 \
   --port 8080 \
   --worker 4 \
-  --timeout-ms 2000
+  --timeout-ms 2000 \
+  --max-header-size 8192
 ```
 
 This command starts a server listening on `127.0.0.1:8080` with 4 preforked worker processes and a 2‑second accept timeout.
@@ -83,4 +84,3 @@ Tests cover:
 - URL parsing (`http/http.rs`)
 - Echo server logic (`process/echo.rs`)
 - Worker manager integration (`worker/manager.rs`)
-

@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::Hash};
+use std::{fmt::Display, hash::Hash, net::SocketAddr};
 
 pub enum HttpVersion {
     Http10,
@@ -139,10 +139,10 @@ impl HttpResponseCode {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Error {
-    #[allow(dead_code)]
     ParseFail(String),
     ReadFail(String),
     WriteFail(String),
+    BadRequest(SocketAddr, &'static str),
 }
 
 impl std::fmt::Display for Error {
@@ -151,6 +151,7 @@ impl std::fmt::Display for Error {
             Error::ParseFail(m) => ("parse fail", m),
             Error::ReadFail(m) => ("read fail", m),
             Error::WriteFail(m) => ("write fail", m),
+            Error::BadRequest(remote, msg) => ("bad request", &format!("{} {}", remote, msg)),
         };
 
         return f.write_fmt(format_args!("HttpError: [{}] {}", name.0, name.1));

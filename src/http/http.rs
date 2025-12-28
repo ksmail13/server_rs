@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     time::{Duration, SystemTime},
 };
 
@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub struct Http1<T: Handler> {
+    max_header_length: usize,
     handler: T,
 }
 
@@ -36,9 +37,14 @@ where
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
         let mut reader = BufReader::new(&stream);
-        let header_res: Result<(usize, Vec<String>), Error> = self.read_header(&mut reader);
+        let header_res: Result<(usize, Vec<String>), Error> =
+            self.read_header(client_addr, &mut reader);
         if let Err(err) = header_res {
-            return Err(process::Error::IoFail(format!("Read header failed: ({})", err)));
+            self.error_response_for_invalid_request(&stream);
+            return Err(process::Error::IoFail(format!(
+                "Read header failed: ({})",
+                err
+            )));
         }
 
         let (header_readed, headers) = header_res.unwrap();
@@ -46,15 +52,7 @@ where
         let res_request: Result<HttpRequest<'_>, Error> =
             self.init_request(client_addr, &headers, reader);
         if let Err(err) = res_request {
-            let mut response = HttpResponse::new(HttpVersion::default(), &stream);
-
-            response.set_response_code(HttpResponseCode::BadRequest);
-            response.set_header(&server(HttpHeaderValue::Str("server_rs")));
-            response.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
-            response.set_header(&date(SystemTime::now()));
-            let _ = response.write("Invalid request".as_bytes());
-            let _ = response.flush();
-
+            self.error_response_for_invalid_request(&stream);
             return Err(process::Error::ParseFail(err.to_string()));
         }
 
@@ -81,12 +79,16 @@ impl<T> Http1<T>
 where
     T: Handler,
 {
-    pub fn new(handler: T) -> Self {
-        return Http1 { handler };
+    pub fn new(max_header_length: usize, handler: T) -> Self {
+        return Http1 {
+            max_header_length,
+            handler,
+        };
     }
 
     fn read_header<'a>(
         &self,
+        client_addr: &SocketAddr,
         reader: &mut BufReader<&'a TcpStream>,
     ) -> Result<(usize, Vec<String>), Error> {
         let mut res = vec![];
@@ -98,6 +100,13 @@ where
                 return Err(Error::ReadFail(format!("{}", err)));
             }
             readed += result.unwrap();
+
+            if readed > self.max_header_length {
+                return Err(Error::BadRequest(
+                    client_addr.clone(),
+                    "header size limit exceed",
+                ));
+            }
 
             while buf
                 .chars()
@@ -184,6 +193,17 @@ where
         }
 
         return header_map;
+    }
+
+    fn error_response_for_invalid_request(&self, stream: &TcpStream) {
+        let mut response = HttpResponse::new(HttpVersion::default(), stream);
+
+        response.set_response_code(HttpResponseCode::BadRequest);
+        response.set_header(&server(HttpHeaderValue::Str("server_rs")));
+        response.set_header(&content_type(HttpHeaderValue::Str("text/plain")));
+        response.set_header(&date(SystemTime::now()));
+        let _ = response.write("Invalid request".as_bytes());
+        let _ = response.flush();
     }
 }
 
