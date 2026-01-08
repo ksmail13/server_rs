@@ -1,30 +1,31 @@
+use std::io::{BufReader, Read};
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::{collections::HashMap, io::BufReader, net::TcpStream};
 
 use crate::http::value::{HttpMethod, HttpVersion};
 
 #[allow(dead_code)]
 pub struct HttpRequest<'a> {
-    remote_addr: &'a std::net::SocketAddr,
+    remote_addr: &'a SocketAddr,
     method: HttpMethod,
     http_version: HttpVersion,
     path: String,
     header: HashMap<&'a str, Vec<&'a str>>,
     param: HashMap<&'a str, Vec<&'a str>>,
-    reader: BufReader<&'a TcpStream>,
+    reader: BufReader<Box<dyn Read + 'a>>,
     // TODO : 필요한건 나중에 추가
 }
 
 #[allow(dead_code)]
 impl<'a> HttpRequest<'a> {
     pub fn new(
-        remote_addr: &'a std::net::SocketAddr,
+        remote_addr: &'a SocketAddr,
         method: HttpMethod,
         http_version: HttpVersion,
         path: String,
         header: HashMap<&'a str, Vec<&'a str>>,
         param: HashMap<&'a str, Vec<&'a str>>,
-        reader: BufReader<&'a TcpStream>,
+        reader: BufReader<Box<dyn Read + 'a>>,
     ) -> Self {
         return HttpRequest {
             remote_addr,
@@ -61,7 +62,7 @@ impl<'a> HttpRequest<'a> {
         return &self.param;
     }
 
-    pub fn reader(&self) -> &BufReader<&'a TcpStream> {
+    pub fn reader(&self) -> &BufReader<Box<dyn Read + 'a>> {
         return &self.reader;
     }
 }

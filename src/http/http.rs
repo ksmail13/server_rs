@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     time::{Duration, SystemTime},
 };
@@ -36,7 +36,7 @@ where
         log::trace!("Read timeout: {:?}", stream.read_timeout());
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
-        let mut reader = BufReader::new(&stream);
+        let mut reader: BufReader<Box<dyn Read>> = BufReader::new(Box::new(&stream));
         let header_res: Result<(usize, Vec<String>), Error> =
             self.read_header(client_addr, &mut reader);
         if let Err(err) = header_res {
@@ -89,7 +89,7 @@ where
     fn read_header<'a>(
         &self,
         client_addr: &SocketAddr,
-        reader: &mut BufReader<&'a TcpStream>,
+        reader: &mut BufReader<Box<dyn Read + 'a>>,
     ) -> Result<(usize, Vec<String>), Error> {
         let mut res = vec![];
         let mut readed = 0;
@@ -148,7 +148,7 @@ where
         &self,
         client_addr: &'a std::net::SocketAddr,
         header: &'a Vec<String>,
-        reader: BufReader<&'a TcpStream>,
+        reader: BufReader<Box<dyn Read + 'a>>,
     ) -> Result<HttpRequest<'a>, Error> {
         let buf = &header[0];
 
