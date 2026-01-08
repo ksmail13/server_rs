@@ -1,5 +1,5 @@
-use std::io::{BufReader, Read};
 use std::collections::HashMap;
+use std::io::Read;
 use std::net::SocketAddr;
 
 use crate::http::value::{HttpMethod, HttpVersion};
@@ -12,7 +12,7 @@ pub struct HttpRequest<'a> {
     path: String,
     header: HashMap<&'a str, Vec<&'a str>>,
     param: HashMap<&'a str, Vec<&'a str>>,
-    reader: BufReader<Box<dyn Read + 'a>>,
+    reader: Box<dyn Read + 'a>,
     // TODO : 필요한건 나중에 추가
 }
 
@@ -25,7 +25,7 @@ impl<'a> HttpRequest<'a> {
         path: String,
         header: HashMap<&'a str, Vec<&'a str>>,
         param: HashMap<&'a str, Vec<&'a str>>,
-        reader: BufReader<Box<dyn Read + 'a>>,
+        reader: Box<dyn Read + 'a>,
     ) -> Self {
         return HttpRequest {
             remote_addr,
@@ -62,7 +62,7 @@ impl<'a> HttpRequest<'a> {
         return &self.param;
     }
 
-    pub fn reader(&self) -> &BufReader<Box<dyn Read + 'a>> {
+    pub fn reader(&self) -> &Box<dyn Read + 'a> {
         return &self.reader;
     }
 }

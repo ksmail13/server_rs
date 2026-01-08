@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
     io::{IoSlice, Write},
-    net::TcpStream,
     rc::Rc,
     time::SystemTime,
 };
 
 use crate::http::{
-    header::{HttpHeader, content_length, date, header},
+    header::{HttpHeader, content_length, date},
     request::HttpRequest,
     value::{HttpMethod, HttpResponseCode, HttpVersion},
 };
@@ -17,14 +16,14 @@ pub struct HttpResponse<'a> {
     code: HttpResponseCode,
     header: HashMap<&'static str, Rc<dyn crate::http::header::ToString>>,
     header_str: HashMap<Rc<String>, Rc<dyn crate::http::header::ToString>>,
-    writer: &'a TcpStream,
+    writer: Box<dyn Write + 'a>,
     buffer: Vec<Vec<u8>>,
     header_only: bool,
     written: usize,
 }
 
 impl<'a> HttpResponse<'a> {
-    pub fn new(version: HttpVersion, writer: &'a TcpStream) -> Self {
+    pub fn new(version: HttpVersion, writer: Box<dyn Write + 'a>) -> Self {
         return Self {
             version: version,
             code: HttpResponseCode::Ok,
@@ -37,7 +36,7 @@ impl<'a> HttpResponse<'a> {
         };
     }
 
-    pub fn from_request(request: &HttpRequest, writer: &'a TcpStream) -> Self {
+    pub fn from_request(request: &HttpRequest, writer: Box<dyn Write + 'a>) -> Self {
         return Self {
             version: request.version(),
             code: HttpResponseCode::Ok,

@@ -45,12 +45,12 @@ where
             })?;
 
         let mut request = self
-            .init_request(client_addr, &headers, reader)
+            .init_request(client_addr, &headers, Box::new(&stream))
             .map_err(|e| {
                 self.error_response_for_invalid_request(&stream);
                 process::Error::ParseFail(e.to_string())
             })?;
-        let mut response = HttpResponse::from_request(&request, &stream);
+        let mut response = HttpResponse::from_request(&request, Box::new(&stream));
         response.set_header(&server(HttpHeaderValue::Str("server_rs")));
 
         self.handler.handle(&mut request, &mut response);
@@ -140,7 +140,7 @@ where
         &self,
         client_addr: &'a std::net::SocketAddr,
         header: &'a Vec<String>,
-        reader: BufReader<Box<dyn Read + 'a>>,
+        reader: Box<dyn Read + 'a>,
     ) -> Result<HttpRequest<'a>, Error> {
         let buf = &header[0];
 
@@ -188,7 +188,7 @@ where
     }
 
     fn error_response_for_invalid_request(&self, stream: &TcpStream) {
-        let mut response = HttpResponse::new(HttpVersion::default(), stream);
+        let mut response = HttpResponse::new(HttpVersion::default(), Box::new(stream));
 
         response.set_response_code(HttpResponseCode::BadRequest);
         response.set_header(&server(HttpHeaderValue::Str("server_rs")));
