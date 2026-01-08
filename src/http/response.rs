@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::http::{
-    header::{HttpHeader, content_length, date},
+    header::{HttpHeader, content_length, date, header},
     request::HttpRequest,
     value::{HttpMethod, HttpResponseCode, HttpVersion},
 };
@@ -20,6 +20,7 @@ pub struct HttpResponse<'a> {
     writer: &'a TcpStream,
     buffer: Vec<Vec<u8>>,
     header_only: bool,
+    written: usize,
 }
 
 impl<'a> HttpResponse<'a> {
@@ -32,6 +33,7 @@ impl<'a> HttpResponse<'a> {
             writer: writer,
             buffer: vec![],
             header_only: false,
+            written: 0,
         };
     }
 
@@ -44,7 +46,12 @@ impl<'a> HttpResponse<'a> {
             writer: writer,
             buffer: vec![],
             header_only: request.method() == HttpMethod::HEAD,
+            written: 0,
         };
+    }
+
+    pub fn written(&self) -> usize {
+        self.written
     }
 }
 
@@ -60,16 +67,20 @@ impl<'a> Write for HttpResponse<'a> {
             self.buffer.iter().map(|b| b.len()).sum::<usize>(),
         ));
         self.set_header(&date(SystemTime::now()));
-        self.write_header()?;
+        let header_written = self.write_header()?;
 
         if self.header_only {
-            return self.writer.flush();
+            self.writer.flush()?;
+            self.written = header_written;
+            return Ok(());
         }
 
         let data: Vec<IoSlice<'_>> = self.buffer.iter().map(|b| IoSlice::new(&b)).collect();
-        self.writer.write_vectored(&data)?;
+        let body_written = self.writer.write_vectored(&data)?;
 
-        return self.writer.flush();
+        self.writer.flush()?;
+        self.written = header_written + body_written;
+        Ok(())
     }
 }
 

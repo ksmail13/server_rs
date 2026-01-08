@@ -59,7 +59,7 @@ where
             .flush()
             .map_err(|e| process::Error::IoFail(e.to_string()))?;
 
-        return Ok((header_readed, 0));
+        Ok((header_readed, response.written()))
     }
 
     fn name(&self) -> String {
