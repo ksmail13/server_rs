@@ -37,35 +37,27 @@ where
         log::trace!("Write timeout: {:?}", stream.write_timeout());
 
         let mut reader: BufReader<Box<dyn Read>> = BufReader::new(Box::new(&stream));
-        let header_res: Result<(usize, Vec<String>), Error> =
-            self.read_header(client_addr, &mut reader);
-        if let Err(err) = header_res {
-            self.error_response_for_invalid_request(&stream);
-            return Err(process::Error::IoFail(format!(
-                "Read header failed: ({})",
-                err
-            )));
-        }
 
-        let (header_readed, headers) = header_res.unwrap();
+        let (header_readed, headers) =
+            self.read_header(client_addr, &mut reader).map_err(|err| {
+                self.error_response_for_invalid_request(&stream);
+                process::Error::IoFail(format!("Read header failed: ({})", err))
+            })?;
 
-        let res_request: Result<HttpRequest<'_>, Error> =
-            self.init_request(client_addr, &headers, reader);
-        if let Err(err) = res_request {
-            self.error_response_for_invalid_request(&stream);
-            return Err(process::Error::ParseFail(err.to_string()));
-        }
-
-        let mut request = res_request.unwrap();
+        let mut request = self
+            .init_request(client_addr, &headers, reader)
+            .map_err(|e| {
+                self.error_response_for_invalid_request(&stream);
+                process::Error::ParseFail(e.to_string())
+            })?;
         let mut response = HttpResponse::from_request(&request, &stream);
-
         response.set_header(&server(HttpHeaderValue::Str("server_rs")));
 
         self.handler.handle(&mut request, &mut response);
 
-        if let Err(err) = response.flush() {
-            return Err(process::Error::IoFail(err.to_string()));
-        }
+        response
+            .flush()
+            .map_err(|e| process::Error::IoFail(e.to_string()))?;
 
         return Ok((header_readed, 0));
     }
